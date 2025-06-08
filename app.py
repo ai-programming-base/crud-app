@@ -130,6 +130,37 @@ def apply_request():
     # 通常遷移はindexへ
     return redirect(url_for('index'))
 
+@app.route('/approval', methods=['GET', 'POST'])
+def approval():
+    db = get_db()
+    if request.method == 'POST':
+        selected_ids = request.form.getlist('selected_ids')
+        comment = request.form.get('reject_comment', '').strip()
+        action = request.form.get('action')
+
+        if not selected_ids:
+            flash("対象を選択してください")
+            # 再表示
+            items = db.execute("SELECT * FROM item WHERE status LIKE ?", ("%申請中%",)).fetchall()
+            return render_template('approval.html', items=items, fields=INDEX_FIELDS)
+
+        if action == 'approve':
+            # 承認（status変更＋alert）
+            for item_id in selected_ids:
+                db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
+            db.commit()
+            return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="承認完了（申請者へメール送信ダイアログ）", finish=True)
+        elif action == 'reject':
+            # 差し戻し（status変更＋alert＋コメント）
+            for item_id in selected_ids:
+                db.execute("UPDATE item SET status=? WHERE id=?", ("入庫差し戻し", item_id))
+            db.commit()
+            return render_template('approval.html', items=[], fields=INDEX_FIELDS, message=f"差し戻し完了: {comment}（申請者へメール送信ダイアログ）", finish=True)
+
+    # GET（一覧表示）: Statusに"申請中"を含む
+    items = db.execute("SELECT * FROM item WHERE status LIKE ?", ("%申請中%",)).fetchall()
+    return render_template('approval.html', items=items, fields=INDEX_FIELDS)
+
 @app.route('/delete_selected', methods=['POST'])
 def delete_selected():
     ids = request.form.getlist('selected_ids')
