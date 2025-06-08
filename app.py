@@ -84,22 +84,18 @@ def delete_selected():
 @app.route('/update_items', methods=['POST'])
 def update_items():
     db = get_db()
-    ids = request.form.getlist('item_id')
-    # 各itemごとに10カラムぶん取ってくる
-    all_fields = []
-    for i in range(len(ids)):
+    item_ids = request.form.getlist('item_id')
+    for item_id in item_ids:
+        # 各fieldの値を "field1_{id}" というname属性から取得
         fields = []
-        for f in range(1, 11):
-            # 複数行のfield1,field2...がPOSTされるのでリストになる
-            field_list = request.form.getlist(f'field{f}')
-            fields.append(field_list[i] if i < len(field_list) else "")
-        all_fields.append(fields)
-    for i, item_id in enumerate(ids):
+        for i in range(1, 11):
+            val = request.form.get(f'field{i}_{item_id}', '').strip()
+            fields.append(val)
         db.execute(
             'UPDATE item SET ' +
             ', '.join([f'field{f}=?' for f in range(1, 11)]) +
             ' WHERE id=?',
-            all_fields[i] + [item_id]
+            fields + [item_id]
         )
     db.commit()
     return redirect(url_for('index'))

@@ -51,7 +51,7 @@
                 td.addEventListener('click', function(e) {
                     if (td.classList.contains('editing')) return;
                     td.classList.add('editing');
-                    let oldValue = td.innerText;
+                    let oldValue = td.innerText.trim();
                     td.contentEditable = true;
                     td.focus();
 
@@ -60,8 +60,9 @@
                         td.contentEditable = false;
                         td.removeEventListener('blur', finishEdit);
                         td.removeEventListener('keydown', keyHandler);
+                        // hidden inputの値を編集内容で上書き
                         let hidden = td.querySelector('input[type="hidden"]');
-                        if (hidden) hidden.value = td.innerText;
+                        if (hidden) hidden.value = td.innerText.trim();
                     }
                     function keyHandler(e) {
                         if (e.key === 'Enter') { e.preventDefault(); td.blur(); }
@@ -117,11 +118,7 @@
             var form = document.getElementById('main-form');
             form.action = "{{ url_for('delete_selected') }}"; form.method = "POST"; form.submit();
         }
-        function submitUpdate() {
-            var form = document.getElementById('main-form');
-            form.action = "{{ url_for('update_items', page=page, **filters) }}";
-            form.method = "POST"; form.submit();
-        }
+        // submitUpdateは不要。button type=submitで十分
     </script>
 </head>
 <body>
@@ -133,50 +130,55 @@
       {% endif %}
       <button type="button" class="filter-toggle" id="toggle-filter">フィルタを表示/非表示</button>
     </div>
+    <!-- フィルタフォーム（GET） -->
     <form id="filter-form" method="get" action="{{ url_for('index') }}">
-    <table>
-        <tr>
-            <th></th>
-            <th>ID</th>
-            {% for f in range(1, 11) %}
-            <th>field{{f}}</th>
-            {% endfor %}
-        </tr>
-        <tr id="filter-row" class="filter-row">
-            <td class="filter-cell" colspan="2" style="text-align:right;color:#666;font-weight:bold;">フィルタ行</td>
-            {% for f in range(1, 11) %}
-            <td class="filter-cell" data-filter-editable="true">
-                <input
-                    type="text" name="field{{f}}_filter"
-                    value="{{ filters['field'+f|string] }}"
-                    placeholder="filter"
-                >
-            </td>
-            {% endfor %}
-        </tr>
-        {% for item in items %}
-        <tr>
-            <td>
-                <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
-                <input type="hidden" name="item_id" value="{{ item['id'] }}">
-            </td>
-            <td>{{ item['id'] }}</td>
-            {% for f in range(1, 11) %}
-            <td data-editable="true">
-                {{ item['field' ~ f] }}
-                <input type="hidden" name="field{{f}}" value="{{ item['field' ~ f] }}">
-            </td>
-            {% endfor %}
-        </tr>
-        {% endfor %}
-    </table>
+        <table>
+            <tr>
+                <th></th>
+                <th>ID</th>
+                {% for f in range(1, 11) %}
+                <th>field{{f}}</th>
+                {% endfor %}
+            </tr>
+            <tr id="filter-row" class="filter-row">
+                <td class="filter-cell" colspan="2" style="text-align:right;color:#666;font-weight:bold;">フィルタ行</td>
+                {% for f in range(1, 11) %}
+                <td class="filter-cell" data-filter-editable="true">
+                    <input
+                        type="text" name="field{{f}}_filter"
+                        value="{{ filters['field'+f|string] }}"
+                        placeholder="filter"
+                    >
+                </td>
+                {% endfor %}
+            </tr>
+        </table>
     </form>
-    <form id="main-form" method="post">
-    <div class="button-group">
-        <button type="button" class="delete" onclick="submitDelete()">選択したアイテムを削除</button>
-        <button type="button" onclick="submitUpdate()">編集内容を一括保存</button>
-        <a href="{{ url_for('add') }}">追加</a>
-    </div>
+
+    <!-- データ編集用フォーム（POST、一括保存・削除用） -->
+    <form id="main-form" method="post" action="{{ url_for('update_items', page=page, **filters) }}">
+        <table>
+            {% for item in items %}
+            <tr>
+                <td>
+                    <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
+                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
+                </td>
+                <td>{{ item['id'] }}</td>
+                {% for f in range(1, 11) %}
+                <td data-editable="true">
+                    {{ item['field' ~ f] }}
+                    <input type="hidden" name="field{{f}}_{{item['id']}}" value="{{ item['field' ~ f] }}">
+                </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </table>
+        <div class="button-group">
+            <button type="button" class="delete" onclick="submitDelete()">選択したアイテムを削除</button>
+            <button type="submit">編集内容を一括保存</button>
+            <a href="{{ url_for('add') }}">追加</a>
+        </div>
     </form>
     <div class="pagination">
       {% for p in range(1, page_count+1) %}
