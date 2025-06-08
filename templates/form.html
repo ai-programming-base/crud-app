@@ -61,6 +61,14 @@
     </script>
 </head>
 <body>
+    <div style="width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;">
+        <div style="margin-top:18px; margin-bottom:2px;">
+            <span style="font-weight:bold; color:#3161c4; margin-right:12px;">
+                {{ g.user['username'] }} さん
+            </span>
+            <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
+        </div>
+    </div>
     <h1>Add Item</h1>
     {% if message %}
       <div class="info-message">{{ message }}</div>

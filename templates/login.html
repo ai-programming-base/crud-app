@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ログイン</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background: #f6f8fa;
+            font-family: 'Segoe UI', 'Meiryo', sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background: #fff;
+            padding: 36px 32px 24px 32px;
+            border-radius: 14px;
+            box-shadow: 0 4px 16px rgba(80,120,200,0.11);
+            min-width: 300px;
+            max-width: 360px;
+            width: 100%;
+            margin: 0 auto;
+            text-align: center;
+        }
+        h1 {
+            margin-top: 0;
+            color: #306090;
+            letter-spacing: 2px;
+            font-size: 1.4rem;
+        }
+        .form-group {
+            margin: 18px 0;
+            text-align: left;
+        }
+        label {
+            font-size: 1rem;
+            color: #444;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px 9px;
+            margin-top: 6px;
+            border: 1.5px solid #bed8fa;
+            border-radius: 5px;
+            font-size: 1rem;
+            box-sizing: border-box;
+            transition: border .18s;
+        }
+        input[type="text"]:focus, input[type="password"]:focus {
+            border-color: #5090f9;
+            outline: none;
+        }
+        .btn {
+            width: 100%;
+            background: #3161c4;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            padding: 10px 0;
+            cursor: pointer;
+            transition: background .17s;
+        }
+        .btn:hover {
+            background: #23468e;
+        }
+        .link {
+            display: block;
+            margin-top: 18px;
+            color: #3161c4;
+            text-decoration: none;
+            font-size: 0.98rem;
+        }
+        .link:hover {
+            text-decoration: underline;
+        }
+        .alert {
+            background: #fff1f1;
+            color: #db4437;
+            padding: 10px 13px;
+            border-radius: 5px;
+            margin-bottom: 14px;
+            font-weight: bold;
+            border-left: 4px solid #db4437;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <form class="card" method="post" autocomplete="off">
+        <h1>ログイン</h1>
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert">
+              {% for msg in messages %}
+                {{ msg }}<br>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+        <div class="form-group">
+            <label for="username">ユーザー名</label>
+            <input type="text" id="username" name="username" autofocus required>
+        </div>
+        <div class="form-group">
+            <label for="password">パスワード</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        <button class="btn" type="submit">ログイン</button>
+        <a class="link" href="{{ url_for('register') }}">アカウントを作成する</a>
+    </form>
+</body>
+</html>

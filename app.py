@@ -1,20 +1,20 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
-import sqlite3
-import math
-import json
 import os
+import sqlite3
+from flask import Flask, render_template, request, redirect, url_for, flash, session, g
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+import json
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
 DATABASE = 'items.db'
 
-def load_fields():
-    with open('fields.json', encoding='utf-8') as f:
-        return json.load(f)
-
-FIELDS = load_fields()
-USER_FIELDS = [f for f in FIELDS if not f.get('internal', False)]
-INDEX_FIELDS = [f for f in FIELDS if f.get('show_in_index', False)]
+# フィールド定義（fields.jsonを利用）
+FIELDS_PATH = os.path.join(os.path.dirname(__file__), 'fields.json')
+with open(FIELDS_PATH, encoding='utf-8') as f:
+    FIELDS = json.load(f)
+USER_FIELDS = [f for f in FIELDS if not f.get('internal')]
+INDEX_FIELDS = [f for f in FIELDS if f.get('show_in_index')]
 FIELD_KEYS = [f['key'] for f in FIELDS]
 
 def get_db():
@@ -24,14 +24,109 @@ def get_db():
 
 def init_db():
     with get_db() as db:
-        db.execute(
-            "CREATE TABLE IF NOT EXISTS item ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            + ", ".join([f"{f['key']} TEXT" for f in FIELDS])
-            + ")"
-        )
+        db.execute(f'''
+            CREATE TABLE IF NOT EXISTS item (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {",".join([f"{f['key']} TEXT" for f in FIELDS])}
+            )
+        ''')
+
+def init_user_db():
+    with get_db() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS roles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS user_roles (
+                user_id INTEGER,
+                role_id INTEGER,
+                FOREIGN KEY(user_id) REFERENCES users(id),
+                FOREIGN KEY(role_id) REFERENCES roles(id),
+                PRIMARY KEY(user_id, role_id)
+            )
+        """)
+        for role in ["manager", "owner", "general"]:
+            db.execute("INSERT OR IGNORE INTO roles (name) VALUES (?)", (role,))
+        db.commit()
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+@app.before_request
+def load_logged_in_user():
+    user_id = session.get('user_id')
+    g.user = None
+    g.user_roles = []
+    if user_id:
+        db = get_db()
+        g.user = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        g.user_roles = [r['name'] for r in db.execute("""
+            SELECT roles.name FROM roles
+            JOIN user_roles ON roles.id = user_roles.role_id
+            WHERE user_roles.user_id=?
+        """, (user_id,))]
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+        if user and check_password_hash(user['password'], password):
+            session['user_id'] = user['id']
+            return redirect(url_for('index'))
+        else:
+            flash("ユーザー名またはパスワードが違います")
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    return redirect(url_for('login'))
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    db = get_db()
+    roles = db.execute("SELECT * FROM roles").fetchall()
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        selected_roles = request.form.getlist('roles')
+        if not username or not password or not selected_roles:
+            flash("すべて入力してください")
+        elif db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone():
+            flash("そのユーザー名は既に使われています")
+        else:
+            db.execute(
+                "INSERT INTO users (username, password) VALUES (?, ?)",
+                (username, generate_password_hash(password))
+            )
+            user_id = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()['id']
+            for role_id in selected_roles:
+                db.execute("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", (user_id, role_id))
+            db.commit()
+            flash("登録完了。ログインしてください。")
+            return redirect(url_for('login'))
+    return render_template('register.html', roles=roles)
 
 @app.route('/')
+@login_required
 def index():
     page = int(request.args.get('page', 1))
     per_page = 10
@@ -40,8 +135,7 @@ def index():
     filters = {}
     where = []
     params = []
-    # フィルタは表示カラム・編集カラムどちらでも自由
-    for f in USER_FIELDS:
+    for f in INDEX_FIELDS:
         v = request.args.get(f"{f['key']}_filter", '').strip()
         filters[f['key']] = v
         if v:
@@ -62,6 +156,7 @@ def index():
     )
 
 @app.route('/add', methods=['GET', 'POST'])
+@login_required
 def add():
     if request.method == 'POST':
         user_values = [request.form.get(f['key'], '').strip() for f in USER_FIELDS]
@@ -73,7 +168,7 @@ def add():
         for f in FIELDS:
             if f.get('internal', False):
                 if f['key'] == 'status':
-                    internal_values.append("入庫前")  # ← ここ変更
+                    internal_values.append("入庫前")
                 else:
                     internal_values.append("")
         values = user_values + internal_values
@@ -97,10 +192,38 @@ def add():
 
     return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS])
 
+@app.route('/delete_selected', methods=['POST'])
+@login_required
+def delete_selected():
+    ids = request.form.getlist('selected_ids')
+    if ids:
+        db = get_db()
+        db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
+        db.commit()
+    return redirect(url_for('index'))
+
+@app.route('/update_items', methods=['POST'])
+@login_required
+def update_items():
+    db = get_db()
+    ids = request.form.getlist('item_id')
+    for item_id in ids:
+        row_values = []
+        for f in FIELDS:
+            value = request.form.get(f"{f['key']}_{item_id}", "")
+            row_values.append(value)
+            set_clause = ", ".join([f"{f['key']}=?" for f in FIELDS])
+            db.execute(
+                f'UPDATE item SET {set_clause} WHERE id=?',
+                row_values + [item_id]
+            )
+    db.commit()
+    return redirect(url_for('index'))
+
 @app.route('/apply_request', methods=['POST', 'GET'])
+@login_required
 def apply_request():
     if request.method == 'POST':
-        # 入庫申請ボタンからPOSTで来た場合
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
             flash("申請対象を選択してください")
@@ -112,9 +235,8 @@ def apply_request():
         )]
         return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
 
-    # 申請画面で申請ボタンが押された場合
+    # 申請ボタン（GET）処理
     if request.args.get('action') == 'submit':
-        # GETでもPOSTでも良いが、POSTにするとリロードで再送信問題が起きやすいのでGETに
         item_ids = request.args.getlist('item_id')
         checkeds = request.args.getlist('qty_checked')
         if not checkeds or len(checkeds) != len(item_ids):
@@ -127,10 +249,10 @@ def apply_request():
         db.commit()
         return render_template('apply_form.html', items=[], fields=INDEX_FIELDS, message="申請が完了しました（ダイアログで通知：本来はメール送信）", finish=True)
 
-    # 通常遷移はindexへ
     return redirect(url_for('index'))
 
 @app.route('/approval', methods=['GET', 'POST'])
+@login_required
 def approval():
     db = get_db()
     if request.method == 'POST':
@@ -140,68 +262,25 @@ def approval():
 
         if not selected_ids:
             flash("対象を選択してください")
-            # 再表示
             items = db.execute("SELECT * FROM item WHERE status LIKE ?", ("%申請中%",)).fetchall()
             return render_template('approval.html', items=items, fields=INDEX_FIELDS)
 
         if action == 'approve':
-            # 承認（status変更＋alert）
             for item_id in selected_ids:
                 db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
             db.commit()
             return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="承認完了（申請者へメール送信ダイアログ）", finish=True)
         elif action == 'reject':
-            # 差し戻し（status変更＋alert＋コメント）
             for item_id in selected_ids:
                 db.execute("UPDATE item SET status=? WHERE id=?", ("入庫差し戻し", item_id))
             db.commit()
             return render_template('approval.html', items=[], fields=INDEX_FIELDS, message=f"差し戻し完了: {comment}（申請者へメール送信ダイアログ）", finish=True)
 
-    # GET（一覧表示）: Statusに"申請中"を含む
     items = db.execute("SELECT * FROM item WHERE status LIKE ?", ("%申請中%",)).fetchall()
     return render_template('approval.html', items=items, fields=INDEX_FIELDS)
-
-@app.route('/delete_selected', methods=['POST'])
-def delete_selected():
-    ids = request.form.getlist('selected_ids')
-    if ids:
-        db = get_db()
-        db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
-        db.commit()
-    return redirect(url_for('index'))
-
-@app.route('/update_items', methods=['POST'])
-def update_items():
-    db = get_db()
-    item_ids = request.form.getlist('item_id')
-    errors = []
-    for item_id in item_ids:
-        row_values = []
-        for f in FIELDS:
-            if not f.get('internal', False):
-                v = request.form.get(f"{f['key']}_{item_id}", '').strip()
-                row_values.append(v)
-            else:
-                current = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
-                row_values.append(current[f['key']])
-        for i, f in enumerate(USER_FIELDS):
-            if f.get('required') and not row_values[INDEX_FIELDS.index(f)]:
-                errors.append(f"ID {item_id} の {f['name']}（必須）を入力してください。")
-        if not errors:
-            db.execute(
-                f'UPDATE item SET '
-                + ', '.join([f"{f['key']}=?" for f in FIELDS])
-                + ' WHERE id=?',
-                row_values + [item_id]
-            )
-    if errors:
-        for msg in errors:
-            flash(msg)
-        return redirect(url_for('index'))
-    db.commit()
-    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     if not os.path.exists(DATABASE):
         init_db()
+    init_user_db()
     app.run(debug=True)
