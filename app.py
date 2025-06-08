@@ -69,19 +69,38 @@ def add():
         for i, f in enumerate(USER_FIELDS):
             if f.get('required') and not user_values[i]:
                 errors.append(f"{f['name']}（必須）を入力してください。")
-        internal_values = ["" for f in FIELDS if f.get('internal', False)]
+        # Statusフィールドの位置・値制御
+        internal_values = []
+        for f in FIELDS:
+            if f.get('internal', False):
+                # "status"だけ承認前、それ以外は空
+                if f['key'] == 'status':
+                    internal_values.append("承認前")
+                else:
+                    internal_values.append("")
         values = user_values + internal_values
+
         if errors:
             for msg in errors:
                 flash(msg)
             return render_template('form.html', fields=USER_FIELDS, values=user_values)
+
         db = get_db()
         db.execute(
             f'INSERT INTO item ({",".join(FIELD_KEYS)}) VALUES ({",".join(["?"]*len(FIELD_KEYS))})',
             values
         )
         db.commit()
-        return redirect(url_for('index'))
+
+        # どちらのボタンかで分岐
+        if 'add_and_next' in request.form:
+            # 同じ内容で再表示（Status以外）
+            return render_template('form.html', fields=USER_FIELDS, values=user_values, message="登録しました。同じ内容で新規入力できます。")
+        else:
+            # 通常追加→indexに戻る
+            return redirect(url_for('index'))
+
+    # GET時
     return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS])
 
 @app.route('/delete_selected', methods=['POST'])
