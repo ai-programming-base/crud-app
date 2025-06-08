@@ -42,6 +42,15 @@ def detail(item_id):
         return redirect(url_for('index'))
     return render_template('detail.html', item=item)
 
+@app.route('/delete_selected', methods=['POST'])
+def delete_selected():
+    ids = request.form.getlist('selected_ids')
+    if ids:
+        db = get_db()
+        db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
+        db.commit()
+    return redirect(url_for('index'))
+
 if __name__ == '__main__':
-    init_db()  # ここでDB初期化
+    init_db()
     app.run(debug=True)
