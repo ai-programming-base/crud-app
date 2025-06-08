@@ -1,8 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 import sqlite3
+import math
 
 app = Flask(__name__)
-app.secret_key = "any_secret"  # フラッシュメッセージ用
+app.secret_key = "any_secret"
 DATABASE = 'items.db'
 
 def get_db():
@@ -22,9 +23,32 @@ def init_db():
 
 @app.route('/')
 def index():
+    page = int(request.args.get('page', 1))
+    per_page = 10
+    offset = (page - 1) * per_page
+
+    filters = {}
+    where = []
+    params = []
+    for i in range(1, 11):
+        v = request.args.get(f'field{i}_filter', '').strip()
+        filters[f'field{i}'] = v
+        if v:
+            where.append(f"field{i} LIKE ?")
+            params.append(f"%{v}%")
+    where_clause = "WHERE " + " AND ".join(where) if where else ""
     db = get_db()
-    items = db.execute('SELECT * FROM item').fetchall()
-    return render_template('index.html', items=items)
+    total = db.execute(f"SELECT COUNT(*) FROM item {where_clause}", params).fetchone()[0]
+    items = db.execute(
+        f"SELECT * FROM item {where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
+        params + [per_page, offset]
+    ).fetchall()
+    page_count = max(1, (total + per_page - 1) // per_page)
+    return render_template(
+        'index.html',
+        items=items, page=page, page_count=page_count,
+        filters=filters, total=total
+    )
 
 @app.route('/add', methods=['GET', 'POST'])
 def add():
