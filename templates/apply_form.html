@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>入庫申請</title>
+    <style>
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid #aaa; padding: 5px 10px; }
+        th { background: #eee; }
+        .button-group { margin-top: 12px; }
+        .button-group button, .button-group a { margin-right: 8px; padding: 6px 16px; border-radius: 4px; border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
+        .button-group a.cancel { background: #aaa; }
+        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+        .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+    </style>
+    <script>
+        function checkAndSubmit() {
+            var allChecked = true;
+            var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
+            if (checks.length > 0) {
+                alert("全ての数量チェックにチェックしてください");
+                return false;
+            }
+            alert("申請が完了しました（本来はメール送信）");
+            return true;
+        }
+    </script>
+</head>
+<body>
+    <h1>入庫申請</h1>
+    {% if message %}
+      <div class="info-message">{{ message }}</div>
+    {% endif %}
+    {% if not finish %}
+    <form method="get" onsubmit="return checkAndSubmit();">
+        <input type="hidden" name="action" value="submit">
+        <table>
+            <tr>
+                <th>ID</th>
+                {% for f in fields %}
+                <th>{{ f.name }}</th>
+                {% endfor %}
+                <th>数量チェック</th>
+            </tr>
+            {% for item in items %}
+            <tr>
+                <td>
+                    {{ item['id'] }}
+                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
+                </td>
+                {% for f in fields %}
+                <td>{{ item[f.key] }}</td>
+                {% endfor %}
+                <td><input type="checkbox" name="qty_checked"></td>
+            </tr>
+            {% endfor %}
+        </table>
+        <div class="button-group">
+            <button type="submit">申請</button>
+            <a href="{{ url_for('index') }}" class="cancel">キャンセル</a>
+        </div>
+    </form>
+    {% endif %}
+    <div>
+      <a href="{{ url_for('index') }}">一覧に戻る</a>
+    </div>
+</body>
+</html>

@@ -69,13 +69,11 @@ def add():
         for i, f in enumerate(USER_FIELDS):
             if f.get('required') and not user_values[i]:
                 errors.append(f"{f['name']}（必須）を入力してください。")
-        # Statusフィールドの位置・値制御
         internal_values = []
         for f in FIELDS:
             if f.get('internal', False):
-                # "status"だけ承認前、それ以外は空
                 if f['key'] == 'status':
-                    internal_values.append("承認前")
+                    internal_values.append("入庫前")  # ← ここ変更
                 else:
                     internal_values.append("")
         values = user_values + internal_values
@@ -92,16 +90,45 @@ def add():
         )
         db.commit()
 
-        # どちらのボタンかで分岐
         if 'add_and_next' in request.form:
-            # 同じ内容で再表示（Status以外）
             return render_template('form.html', fields=USER_FIELDS, values=user_values, message="登録しました。同じ内容で新規入力できます。")
         else:
-            # 通常追加→indexに戻る
             return redirect(url_for('index'))
 
-    # GET時
     return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS])
+
+@app.route('/apply_request', methods=['POST', 'GET'])
+def apply_request():
+    if request.method == 'POST':
+        # 入庫申請ボタンからPOSTで来た場合
+        item_ids = request.form.getlist('selected_ids')
+        if not item_ids:
+            flash("申請対象を選択してください")
+            return redirect(url_for('index'))
+
+        db = get_db()
+        items = [dict(row) for row in db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        )]
+        return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
+
+    # 申請画面で申請ボタンが押された場合
+    if request.args.get('action') == 'submit':
+        # GETでもPOSTでも良いが、POSTにするとリロードで再送信問題が起きやすいのでGETに
+        item_ids = request.args.getlist('item_id')
+        checkeds = request.args.getlist('qty_checked')
+        if not checkeds or len(checkeds) != len(item_ids):
+            flash("すべての数量チェックを確認してください")
+            return redirect(url_for('index'))
+
+        db = get_db()
+        for id in item_ids:
+            db.execute("UPDATE item SET status=? WHERE id=?", ("入庫申請中", id))
+        db.commit()
+        return render_template('apply_form.html', items=[], fields=INDEX_FIELDS, message="申請が完了しました（ダイアログで通知：本来はメール送信）", finish=True)
+
+    # 通常遷移はindexへ
+    return redirect(url_for('index'))
 
 @app.route('/delete_selected', methods=['POST'])
 def delete_selected():
