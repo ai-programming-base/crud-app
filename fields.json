@@ -1,0 +1,13 @@
+[
+    {"name": "品番",    "key": "field1",   "required": true,  "internal": false, "show_in_index": true},
+    {"name": "品名",    "key": "field2",   "required": true,  "internal": false, "show_in_index": true},
+    {"name": "在庫数",  "key": "field3",   "required": false, "internal": false, "show_in_index": true},
+    {"name": "ロケ",    "key": "field4",   "required": false, "internal": false, "show_in_index": true},
+    {"name": "棚番号",  "key": "field5",   "required": false, "internal": false, "show_in_index": true},
+    {"name": "カテゴリ","key": "field6",  "required": false, "internal": false, "show_in_index": true},
+    {"name": "備考1",   "key": "field7",   "required": false, "internal": false, "show_in_index": false},
+    {"name": "備考2",   "key": "field8",   "required": false, "internal": false, "show_in_index": false},
+    {"name": "登録者",  "key": "field9",   "required": false, "internal": false, "show_in_index": false},
+    {"name": "登録日",  "key": "field10",  "required": false, "internal": false, "show_in_index": false},
+    {"name": "状態",    "key": "status",   "required": false, "internal": true,  "show_in_index": true}
+]

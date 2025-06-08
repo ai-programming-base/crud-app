@@ -1,10 +1,21 @@
 from flask import Flask, render_template, request, redirect, url_for, flash
 import sqlite3
 import math
+import json
+import os
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
 DATABASE = 'items.db'
+
+def load_fields():
+    with open('fields.json', encoding='utf-8') as f:
+        return json.load(f)
+
+FIELDS = load_fields()
+USER_FIELDS = [f for f in FIELDS if not f.get('internal', False)]
+INDEX_FIELDS = [f for f in FIELDS if f.get('show_in_index', False)]
+FIELD_KEYS = [f['key'] for f in FIELDS]
 
 def get_db():
     conn = sqlite3.connect(DATABASE)
@@ -13,13 +24,12 @@ def get_db():
 
 def init_db():
     with get_db() as db:
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS item (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                field1 TEXT, field2 TEXT, field3 TEXT, field4 TEXT, field5 TEXT,
-                field6 TEXT, field7 TEXT, field8 TEXT, field9 TEXT, field10 TEXT
-            )
-        ''')
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS item ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            + ", ".join([f"{f['key']} TEXT" for f in FIELDS])
+            + ")"
+        )
 
 @app.route('/')
 def index():
@@ -30,11 +40,12 @@ def index():
     filters = {}
     where = []
     params = []
-    for i in range(1, 11):
-        v = request.args.get(f'field{i}_filter', '').strip()
-        filters[f'field{i}'] = v
+    # フィルタは表示カラム・編集カラムどちらでも自由
+    for f in USER_FIELDS:
+        v = request.args.get(f"{f['key']}_filter", '').strip()
+        filters[f['key']] = v
         if v:
-            where.append(f"field{i} LIKE ?")
+            where.append(f"{f['key']} LIKE ?")
             params.append(f"%{v}%")
     where_clause = "WHERE " + " AND ".join(where) if where else ""
     db = get_db()
@@ -47,30 +58,31 @@ def index():
     return render_template(
         'index.html',
         items=items, page=page, page_count=page_count,
-        filters=filters, total=total
+        filters=filters, total=total, fields=INDEX_FIELDS
     )
 
 @app.route('/add', methods=['GET', 'POST'])
 def add():
     if request.method == 'POST':
-        values = [request.form.get(f'field{i}', '').strip() for i in range(1, 11)]
+        user_values = [request.form.get(f['key'], '').strip() for f in USER_FIELDS]
         errors = []
-        if not values[0]:
-            errors.append("field1（必須）を入力してください。")
-        if not values[1]:
-            errors.append("field2（必須）を入力してください。")
+        for i, f in enumerate(USER_FIELDS):
+            if f.get('required') and not user_values[i]:
+                errors.append(f"{f['name']}（必須）を入力してください。")
+        internal_values = ["" for f in FIELDS if f.get('internal', False)]
+        values = user_values + internal_values
         if errors:
             for msg in errors:
                 flash(msg)
-            return render_template('form.html', values=values)
+            return render_template('form.html', fields=USER_FIELDS, values=user_values)
         db = get_db()
         db.execute(
-            'INSERT INTO item (field1,field2,field3,field4,field5,field6,field7,field8,field9,field10) VALUES (?,?,?,?,?,?,?,?,?,?)',
+            f'INSERT INTO item ({",".join(FIELD_KEYS)}) VALUES ({",".join(["?"]*len(FIELD_KEYS))})',
             values
         )
         db.commit()
         return redirect(url_for('index'))
-    return render_template('form.html')
+    return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS])
 
 @app.route('/delete_selected', methods=['POST'])
 def delete_selected():
@@ -85,21 +97,34 @@ def delete_selected():
 def update_items():
     db = get_db()
     item_ids = request.form.getlist('item_id')
+    errors = []
     for item_id in item_ids:
-        # 各fieldの値を "field1_{id}" というname属性から取得
-        fields = []
-        for i in range(1, 11):
-            val = request.form.get(f'field{i}_{item_id}', '').strip()
-            fields.append(val)
-        db.execute(
-            'UPDATE item SET ' +
-            ', '.join([f'field{f}=?' for f in range(1, 11)]) +
-            ' WHERE id=?',
-            fields + [item_id]
-        )
+        row_values = []
+        for f in FIELDS:
+            if not f.get('internal', False):
+                v = request.form.get(f"{f['key']}_{item_id}", '').strip()
+                row_values.append(v)
+            else:
+                current = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
+                row_values.append(current[f['key']])
+        for i, f in enumerate(USER_FIELDS):
+            if f.get('required') and not row_values[INDEX_FIELDS.index(f)]:
+                errors.append(f"ID {item_id} の {f['name']}（必須）を入力してください。")
+        if not errors:
+            db.execute(
+                f'UPDATE item SET '
+                + ', '.join([f"{f['key']}=?" for f in FIELDS])
+                + ' WHERE id=?',
+                row_values + [item_id]
+            )
+    if errors:
+        for msg in errors:
+            flash(msg)
+        return redirect(url_for('index'))
     db.commit()
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    init_db()
+    if not os.path.exists(DATABASE):
+        init_db()
     app.run(debug=True)

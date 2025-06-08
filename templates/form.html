@@ -7,25 +7,13 @@
         th, td { border: 1px solid #aaa; padding: 8px; min-width: 120px; }
         th { background: #eee; text-align: left; }
         td.editing { background: #d0e3f7; }
-        .button-group {
-            margin-top: 12px;
-        }
-        .button-group button, .button-group a {
-            margin-right: 8px;
-            padding: 6px 16px;
-            border-radius: 4px;
-            border: none;
-            background: #4285f4;
-            color: #fff;
-            text-decoration: none;
-            cursor: pointer;
-        }
+        .button-group { margin-top: 12px; }
+        .button-group button, .button-group a { margin-right: 8px; padding: 6px 16px; border-radius: 4px; border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
         .button-group a.cancel { background: #aaa; }
         .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // Excelライク編集
             document.querySelectorAll('td[data-editable="true"]').forEach(function(td) {
                 td.addEventListener('click', function(e) {
                     if (td.classList.contains('editing')) return;
@@ -40,7 +28,7 @@
                         td.removeEventListener('blur', finishEdit);
                         td.removeEventListener('keydown', keyHandler);
                         let hidden = td.querySelector('input[type="hidden"]');
-                        if (hidden) hidden.value = td.innerText;
+                        if (hidden) hidden.value = td.innerText.trim();
                     }
                     function keyHandler(e) {
                         if (e.key === 'Enter') {
@@ -56,14 +44,17 @@
                 });
             });
 
-            // クライアント側バリデーション
             document.querySelector('form').addEventListener('submit', function(e) {
-                var f1 = document.querySelector('input[name="field1"]').value.trim();
-                var f2 = document.querySelector('input[name="field2"]').value.trim();
-                if (!f1 || !f2) {
-                    alert("field1とfield2は必須項目です。");
+                {% for f in fields %}
+                {% if f.required %}
+                var v = document.querySelector('input[name="{{f.key}}"]').value.trim();
+                if (!v) {
+                    alert("{{f.name}}は必須項目です。");
                     e.preventDefault();
+                    return false;
                 }
+                {% endif %}
+                {% endfor %}
             });
         });
     </script>
@@ -85,18 +76,14 @@
                 <th>フィールド名</th>
                 <th>値</th>
             </tr>
-            {% for i in range(1, 11) %}
+            {% for f in fields %}
             <tr>
                 <td>
-                  {% if i==1 or i==2 %}
-                    field{{i}} <span style="color:#db4437;">*</span>
-                  {% else %}
-                    field{{i}}
-                  {% endif %}
+                    {{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}
                 </td>
                 <td data-editable="true">
-                    <input type="hidden" name="field{{i}}" value="{{ values[i-1] if values is defined else '' }}">
-                    {{ values[i-1] if values is defined else '' }}
+                    <input type="hidden" name="{{ f.key }}" value="{{ values[loop.index0] if values is defined else '' }}">
+                    {{ values[loop.index0] if values is defined else '' }}
                 </td>
             </tr>
             {% endfor %}
