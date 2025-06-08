@@ -21,9 +21,11 @@
             cursor: pointer;
         }
         .button-group a.cancel { background: #aaa; }
+        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // Excelライク編集
             document.querySelectorAll('td[data-editable="true"]').forEach(function(td) {
                 td.addEventListener('click', function(e) {
                     if (td.classList.contains('editing')) return;
@@ -37,7 +39,6 @@
                         td.contentEditable = false;
                         td.removeEventListener('blur', finishEdit);
                         td.removeEventListener('keydown', keyHandler);
-                        // hidden input更新
                         let hidden = td.querySelector('input[type="hidden"]');
                         if (hidden) hidden.value = td.innerText;
                     }
@@ -54,11 +55,30 @@
                     td.addEventListener('keydown', keyHandler);
                 });
             });
+
+            // クライアント側バリデーション
+            document.querySelector('form').addEventListener('submit', function(e) {
+                var f1 = document.querySelector('input[name="field1"]').value.trim();
+                var f2 = document.querySelector('input[name="field2"]').value.trim();
+                if (!f1 || !f2) {
+                    alert("field1とfield2は必須項目です。");
+                    e.preventDefault();
+                }
+            });
         });
     </script>
 </head>
 <body>
     <h1>Add Item</h1>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="error-message">
+          {% for msg in messages %}
+            {{ msg }}<br>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
     <form method="post">
         <table>
             <tr>
@@ -67,9 +87,16 @@
             </tr>
             {% for i in range(1, 11) %}
             <tr>
-                <td>field{{i}}</td>
+                <td>
+                  {% if i==1 or i==2 %}
+                    field{{i}} <span style="color:#db4437;">*</span>
+                  {% else %}
+                    field{{i}}
+                  {% endif %}
+                </td>
                 <td data-editable="true">
-                    <input type="hidden" name="field{{i}}">
+                    <input type="hidden" name="field{{i}}" value="{{ values[i-1] if values is defined else '' }}">
+                    {{ values[i-1] if values is defined else '' }}
                 </td>
             </tr>
             {% endfor %}

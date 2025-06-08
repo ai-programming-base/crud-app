@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
 import sqlite3
 
 app = Flask(__name__)
+app.secret_key = "any_secret"  # フラッシュメッセージ用
 DATABASE = 'items.db'
 
 def get_db():
@@ -29,13 +30,21 @@ def index():
 def add():
     if request.method == 'POST':
         values = [request.form.get(f'field{i}', '').strip() for i in range(1, 11)]
-        if any(values):
-            db = get_db()
-            db.execute(
-                'INSERT INTO item (field1,field2,field3,field4,field5,field6,field7,field8,field9,field10) VALUES (?,?,?,?,?,?,?,?,?,?)',
-                values
-            )
-            db.commit()
+        errors = []
+        if not values[0]:
+            errors.append("field1（必須）を入力してください。")
+        if not values[1]:
+            errors.append("field2（必須）を入力してください。")
+        if errors:
+            for msg in errors:
+                flash(msg)
+            return render_template('form.html', values=values)
+        db = get_db()
+        db.execute(
+            'INSERT INTO item (field1,field2,field3,field4,field5,field6,field7,field8,field9,field10) VALUES (?,?,?,?,?,?,?,?,?,?)',
+            values
+        )
+        db.commit()
         return redirect(url_for('index'))
     return render_template('form.html')
 
