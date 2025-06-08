@@ -11,7 +11,13 @@ def get_db():
 
 def init_db():
     with get_db() as db:
-        db.execute('CREATE TABLE IF NOT EXISTS item (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, description TEXT)')
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS item (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                field1 TEXT, field2 TEXT, field3 TEXT, field4 TEXT, field5 TEXT,
+                field6 TEXT, field7 TEXT, field8 TEXT, field9 TEXT, field10 TEXT
+            )
+        ''')
 
 @app.route('/')
 def index():
@@ -22,25 +28,16 @@ def index():
 @app.route('/add', methods=['GET', 'POST'])
 def add():
     if request.method == 'POST':
-        name = request.form['name']
-        description = request.form['description']
-        db = get_db()
-        db.execute('INSERT INTO item (name, description) VALUES (?, ?)', (name, description))
-        db.commit()
+        values = [request.form.get(f'field{i}', '').strip() for i in range(1, 11)]
+        if any(values):
+            db = get_db()
+            db.execute(
+                'INSERT INTO item (field1,field2,field3,field4,field5,field6,field7,field8,field9,field10) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                values
+            )
+            db.commit()
         return redirect(url_for('index'))
-    return render_template('form.html', item=None)
-
-@app.route('/item/<int:item_id>', methods=['GET', 'POST'])
-def detail(item_id):
-    db = get_db()
-    item = db.execute('SELECT * FROM item WHERE id=?', (item_id,)).fetchone()
-    if request.method == 'POST':
-        name = request.form['name']
-        description = request.form['description']
-        db.execute('UPDATE item SET name=?, description=? WHERE id=?', (name, description, item_id))
-        db.commit()
-        return redirect(url_for('index'))
-    return render_template('detail.html', item=item)
+    return render_template('form.html')
 
 @app.route('/delete_selected', methods=['POST'])
 def delete_selected():
@@ -49,6 +46,29 @@ def delete_selected():
         db = get_db()
         db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
         db.commit()
+    return redirect(url_for('index'))
+
+@app.route('/update_items', methods=['POST'])
+def update_items():
+    db = get_db()
+    ids = request.form.getlist('item_id')
+    # 各itemごとに10カラムぶん取ってくる
+    all_fields = []
+    for i in range(len(ids)):
+        fields = []
+        for f in range(1, 11):
+            # 複数行のfield1,field2...がPOSTされるのでリストになる
+            field_list = request.form.getlist(f'field{f}')
+            fields.append(field_list[i] if i < len(field_list) else "")
+        all_fields.append(fields)
+    for i, item_id in enumerate(ids):
+        db.execute(
+            'UPDATE item SET ' +
+            ', '.join([f'field{f}=?' for f in range(1, 11)]) +
+            ' WHERE id=?',
+            all_fields[i] + [item_id]
+        )
+    db.commit()
     return redirect(url_for('index'))
 
 if __name__ == '__main__':

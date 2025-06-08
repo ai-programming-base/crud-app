@@ -3,9 +3,10 @@
 <head>
     <title>Item List</title>
     <style>
-        table { border-collapse: collapse; width: 60%; }
-        th, td { border: 1px solid #aaa; padding: 6px; }
+        table { border-collapse: collapse; width: 95%; }
+        th, td { border: 1px solid #aaa; padding: 6px; min-width: 100px; }
         th { background: #eee; }
+        td.editing { background: #d0e3f7; }
         .button-group {
             margin-top: 10px;
         }
@@ -24,41 +25,97 @@
         }
     </style>
     <script>
+        // Excel風編集
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('td[data-editable="true"]').forEach(function(td) {
+                td.addEventListener('click', function(e) {
+                    if (td.classList.contains('editing')) return;
+                    td.classList.add('editing');
+                    let oldValue = td.innerText;
+                    td.contentEditable = true;
+                    td.focus();
+
+                    function finishEdit() {
+                        td.classList.remove('editing');
+                        td.contentEditable = false;
+                        td.removeEventListener('blur', finishEdit);
+                        td.removeEventListener('keydown', keyHandler);
+                        // hidden input更新
+                        let hidden = td.querySelector('input[type="hidden"]');
+                        if (hidden) hidden.value = td.innerText;
+                    }
+                    function keyHandler(e) {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            td.blur();
+                        } else if (e.key === 'Escape') {
+                            td.innerText = oldValue;
+                            td.blur();
+                        }
+                    }
+                    td.addEventListener('blur', finishEdit);
+                    td.addEventListener('keydown', keyHandler);
+                });
+            });
+        });
+
         function toggleAll(source) {
             let checkboxes = document.getElementsByName('selected_ids');
             for (let i = 0; i < checkboxes.length; i++) {
                 checkboxes[i].checked = source.checked;
             }
         }
+        function submitDelete() {
+            var form = document.getElementById('main-form');
+            form.action = "{{ url_for('delete_selected') }}";
+            form.method = "POST";
+            form.submit();
+        }
+        function submitUpdate() {
+            var form = document.getElementById('main-form');
+            form.action = "{{ url_for('update_items') }}";
+            form.method = "POST";
+            form.submit();
+        }
     </script>
 </head>
 <body>
     <h1>Item List</h1>
-    <form method="post" action="{{ url_for('delete_selected') }}" onsubmit="return confirm('選択したアイテムを削除しますか？');">
+    <form id="main-form" method="post">
     <table>
         <tr>
             <th><input type="checkbox" onclick="toggleAll(this)"></th>
             <th>ID</th>
-            <th>Name</th>
-            <th>Description</th>
-            <th>Action</th>
+            <th>field1</th>
+            <th>field2</th>
+            <th>field3</th>
+            <th>field4</th>
+            <th>field5</th>
+            <th>field6</th>
+            <th>field7</th>
+            <th>field8</th>
+            <th>field9</th>
+            <th>field10</th>
         </tr>
         {% for item in items %}
         <tr>
             <td>
                 <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
+                <input type="hidden" name="item_id" value="{{ item['id'] }}">
             </td>
             <td>{{ item['id'] }}</td>
-            <td>{{ item['name'] }}</td>
-            <td>{{ item['description'] }}</td>
-            <td>
-                <a href="{{ url_for('detail', item_id=item['id']) }}">Detail/Edit</a>
+            {% for f in range(1, 11) %}
+            <td data-editable="true">
+                {{ item['field' ~ f] }}
+                <input type="hidden" name="field{{f}}" value="{{ item['field' ~ f] }}">
             </td>
+            {% endfor %}
         </tr>
         {% endfor %}
     </table>
     <div class="button-group">
-        <button type="submit" class="delete">選択したアイテムを削除</button>
+        <button type="button" class="delete" onclick="submitDelete()">選択したアイテムを削除</button>
+        <button type="button" onclick="submitUpdate()">編集内容を一括保存</button>
         <a href="{{ url_for('add') }}">追加</a>
     </div>
     </form>
