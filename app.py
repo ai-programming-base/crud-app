@@ -280,7 +280,6 @@ def approval():
     return render_template('approval.html', items=items, fields=INDEX_FIELDS)
 
 if __name__ == '__main__':
-    if not os.path.exists(DATABASE):
-        init_db()
+    init_db()
     init_user_db()
     app.run(debug=True)
