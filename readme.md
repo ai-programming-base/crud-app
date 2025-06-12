@@ -7,15 +7,15 @@
 
 ■ プロジェクト構成
 
-crud_app/
-├── app.py           # メインのFlaskアプリ（全ルーティング・DB処理、fields.jsonに基づく柔軟設計）
-├── fields.json      # フィールド定義・設定（追加・必須・内部管理・表示可否を管理）
-├── templates/
-│   ├── index.html        # 一覧・編集・フィルタ・ページネーション・入庫申請・承認画面リンク（fields.jsonのshow_in_indexに従う）
-│   ├── form.html         # 1アイテム追加用のExcelライク入力画面（fields.jsonのinternal=false項目のみ編集対象）
-│   ├── apply_form.html   # 入庫申請画面（選択アイテムの申請と数量チェック）
-│   └── approval.html     # 承認画面（申請中アイテムの一括承認/差し戻し）
-└── (その他: static/ migrations/ などは用途に応じて追加)
+crud_app/  
+├── app.py           # メインのFlaskアプリ（全ルーティング・DB処理、fields.jsonに基づく柔軟設計）  
+├── fields.json      # フィールド定義・設定（追加・必須・内部管理・表示可否を管理）  
+├── templates/  
+│   ├── index.html        # 一覧・編集・フィルタ・ページネーション・入庫申請・承認画面リンク（fields.jsonのshow_in_indexに従う）  
+│   ├── form.html         # 1アイテム追加用のExcelライク入力画面（fields.jsonのinternal=false項目のみ編集対象）  
+│   ├── apply_form.html   # 入庫申請画面（選択アイテムの申請と数量チェック）  
+│   └── approval.html     # 承認画面（申請中アイテムの一括承認/差し戻し）  
+└── (その他: static/ migrations/ などは用途に応じて追加)  
 
 ---
 
