@@ -212,11 +212,11 @@ def update_items():
         for f in FIELDS:
             value = request.form.get(f"{f['key']}_{item_id}", "")
             row_values.append(value)
-            set_clause = ", ".join([f"{f['key']}=?" for f in FIELDS])
-            db.execute(
-                f'UPDATE item SET {set_clause} WHERE id=?',
-                row_values + [item_id]
-            )
+        set_clause = ", ".join([f"{f['key']}=?" for f in FIELDS])
+        db.execute(
+            f'UPDATE item SET {set_clause} WHERE id=?',
+            row_values + [item_id]
+        )
     db.commit()
     return redirect(url_for('index'))
 
