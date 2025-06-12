@@ -119,6 +119,7 @@
                 <label class="form-label" for="manager">管理者</label>
                 <input class="form-input" type="text" id="manager" name="manager" value="">
             </div>
+            <div id="owner-tables-area" style="margin-top:25px; display:none;"></div>
             <div class="form-field">
                 <label class="form-label" for="comment">申請コメント</label>
                 <textarea class="form-textarea" id="comment" name="comment"></textarea>
@@ -134,5 +135,86 @@
         </div>
     </form>
     {% endif %}
+    {% if finish %}
+    <h2>申請内容</h2>
+    <table>
+        <tr>
+            <th>ID</th>
+            {% for f in fields %}
+            <th>{{ f.name }}</th>
+            {% endfor %}
+        </tr>
+        {% for item in items %}
+        <tr>
+            <td>{{ item['id'] }}</td>
+            {% for f in fields %}
+            <td>{{ item[f.key] }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+    <div class="button-group" style="margin-top: 20px;">
+        <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+    </div>
+    {% endif %}
+    <script>
+        function createOwnerTables() {
+            let checked = document.querySelector('input[name="with_checkout"]:checked');
+            let area = document.getElementById('owner-tables-area');
+            area.innerHTML = '';
+            if (!checked) {
+                area.style.display = "none";
+                return;
+            }
+            let items = [];
+            // サーバからitems配列を受け取る
+            {% for item in items %}
+                items.push({
+                    id: "{{ item['id'] }}",
+                    num_of_samples: parseInt("{{ item['num_of_samples']|default(1) }}"),
+                    product_name: "{{ item['product_name']|default('')|e }}"
+                });
+            {% endfor %}
+            let username = "{{ g.user['username'] }}";
+            let allHtml = `<b>所有者</b>`;
+            for (let it of items) {
+                let t = `<div style="margin-top:12px; margin-bottom:20px;"><b>ID ${it.id}（${it.product_name}）</b><br>
+                    <table style="border-collapse:collapse;">
+                    <tr>
+                        <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
+                        <th style="border:1px solid #aaa;padding:5px 10px;">所有者</th>
+                    </tr>`;
+                let n = it.num_of_samples;
+                if (!n || n<=0) n = 1;
+                for (let i=1; i<=n; i++) {
+                    // 各セルで編集可、hiddenでsubmit
+                    t += `<tr>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${i}</td>
+                    <td style="border:1px solid #aaa;padding:5px 10px;" contenteditable="true">
+                        <input type="hidden" name="owner_list_${it.id}" value="${username}">
+                        ${username}
+                    </td>
+                    </tr>`;
+                }
+                t += `</table></div>`;
+                allHtml += t;
+            }
+            area.innerHTML = allHtml;
+            area.style.display = "block";
+            // 編集内容をhidden inputに反映
+            let tds = area.querySelectorAll('td[contenteditable="true"]');
+            tds.forEach(td => {
+            td.addEventListener('input', function() {
+                let input = td.querySelector('input[type="hidden"]');
+                input.value = td.innerText.trim();
+            });
+            });
+        }
+        // チェックボックスで表示/非表示切り替え
+        document.addEventListener("DOMContentLoaded", function() {
+            let cb = document.querySelector('input[name="with_checkout"]');
+            if (cb) cb.addEventListener('change', createOwnerTables);
+        });
+    </script>
 </body>
 </html>

@@ -59,6 +59,19 @@ def init_user_db():
             db.execute("INSERT OR IGNORE INTO roles (name) VALUES (?)", (role,))
         db.commit()
 
+def init_checkout_request_db():
+    with get_db() as db:
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS checkout_request (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                branch_no INTEGER NOT NULL,
+                owner TEXT NOT NULL,
+                status TEXT NOT NULL
+            )
+        ''')
+        db.commit()
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -244,10 +257,28 @@ def apply_request():
             return redirect(url_for('index'))
 
         db = get_db()
+        # 持ち出し申請の有無を確認
+        with_checkout = request.args.get("with_checkout") == "1"
+        new_status = "入庫持ち出し申請中" if with_checkout else "入庫申請中"
         for id in item_ids:
-            db.execute("UPDATE item SET status=? WHERE id=?", ("入庫申請中", id))
+            db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
+
+        if with_checkout:
+            # 申請フォームからowner_list_{item_id}の一覧を受け取る
+            for item_id in item_ids:
+                owners = request.args.getlist(f"owner_list_{item_id}")
+                for idx, owner in enumerate(owners, 1):
+                    db.execute(
+                        "INSERT INTO checkout_request (item_id, branch_no, owner, status) VALUES (?, ?, ?, ?)",
+                        (item_id, idx, owner, "持ち出し申請中")
+                    )
+
         db.commit()
-        return render_template('apply_form.html', items=[], fields=INDEX_FIELDS, message="申請が完了しました（ダイアログで通知：本来はメール送信）", finish=True)
+        # ここで申請内容を再取得
+        items = [dict(row) for row in db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        )]
+        return render_template('apply_form.html', items=items, fields=INDEX_FIELDS, message="申請が完了しました（ダイアログで通知：本来はメール送信）", finish=True)
 
     return redirect(url_for('index'))
 
@@ -282,4 +313,5 @@ def approval():
 if __name__ == '__main__':
     init_db()
     init_user_db()
+    init_checkout_request_db()
     app.run(debug=True)
