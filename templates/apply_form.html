@@ -6,13 +6,52 @@
         table { border-collapse: collapse; }
         th, td { border: 1px solid #aaa; padding: 5px 10px; }
         th { background: #eee; }
-        .button-group { margin-top: 12px; }
-        .button-group button, .button-group a { margin-right: 8px; padding: 6px 16px; border-radius: 4px; border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
-        .button-group a.cancel { background: #aaa; }
-        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+        .button-group { margin-top: 18px; }
+        .main-btn {
+            background: #4285f4;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: bold;
+            padding: 6px 16px;
+            margin-right: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background .15s;
+        }
+        .main-btn:hover { background: #23468e; color: #fff; }
+        .form-field { margin-bottom: 12px; }
+        .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
+        .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+        .form-textarea { height: 56px; resize: vertical; }
         .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
     </style>
     <script>
+        // 日付をYYYY-MM-DDで取得
+        function getToday() {
+            const d = new Date();
+            return d.toISOString().slice(0, 10);
+        }
+        // 3ヶ月先の月末
+        function getThreeMonthLast() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth();
+            // 3ヶ月後
+            const after3 = new Date(y, m + 3, 1);
+            // 3ヶ月後の月の0日＝3ヶ月後月の前月末日
+            const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
+            return lastDay.toISOString().slice(0, 10);
+        }
+        document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById('start_date').value = getToday();
+            document.getElementById('end_date').value = getThreeMonthLast();
+            // 管理者自動入力
+            {% if g.user %}
+                document.getElementById('manager').value = "{{ g.user['username'] }}";
+            {% endif %}
+        });
         function checkAndSubmit() {
             var allChecked = true;
             var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
@@ -62,14 +101,38 @@
             </tr>
             {% endfor %}
         </table>
+        <div style="margin-top: 24px; margin-bottom: 8px;">
+            <div class="form-field">
+                <label class="form-label">
+                    <input type="checkbox" name="with_checkout" value="1"> 持ち出し申請を同時に行う
+                </label>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="start_date">持ち出し開始日</label>
+                <input class="form-input" type="date" id="start_date" name="start_date">
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="end_date">持ち出し終了日</label>
+                <input class="form-input" type="date" id="end_date" name="end_date">
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="manager">管理者</label>
+                <input class="form-input" type="text" id="manager" name="manager" value="">
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="comment">申請コメント</label>
+                <textarea class="form-textarea" id="comment" name="comment"></textarea>
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="approver">承認者</label>
+                <input class="form-input" type="text" id="approver" name="approver" value="">
+            </div>
+        </div>
         <div class="button-group">
-            <button type="submit">申請</button>
-            <a href="{{ url_for('index') }}" class="cancel">キャンセル</a>
+            <button type="submit" class="main-btn">申請</button>
+            <a href="{{ url_for('index') }}" class="main-btn" style="background:#aaa;">キャンセル</a>
         </div>
     </form>
     {% endif %}
-    <div>
-      <a href="{{ url_for('index') }}">一覧に戻る</a>
-    </div>
 </body>
 </html>
