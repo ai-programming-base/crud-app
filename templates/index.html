@@ -182,7 +182,7 @@
                 </td>
                 <td class="col-id">{{ item['id'] }}</td>
                 {% for f in fields %}
-                <td data-editable="true">
+                <td {% if not f.internal %}data-editable="true"{% endif %}>
                     {{ item[f.key] }}
                     <input type="hidden" name="{{f.key}}_{{item['id']}}" value="{{ item[f.key] }}">
                 </td>
