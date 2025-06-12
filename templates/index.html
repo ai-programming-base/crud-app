@@ -3,27 +3,43 @@
 <head>
     <title>Item List</title>
     <style>
-        table { border-collapse: collapse; width: 98%; }
-        th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
-        th { background: #eee; }
-        td.editing, td.filter-editing { background: #d0e3f7; }
-        .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
-        .filter-indicator { color: #33691e; font-weight: bold; margin-left: 10px; font-size: 14px; background: #f5f5cc; border-radius: 4px; padding: 2px 8px; }
-        .button-group { margin-top: 4px; }
-        .button-group button, .button-group a {
-            margin-right: 8px; padding: 6px 16px; border-radius: 4px;
-            border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer;
-        }
-        .button-group button.delete { background: #db4437; }
-        .button-group button.apply { background: #43a047; }
-        .button-group a.approve { background: #43a047; color: #fff; }
-        .pagination a, .pagination strong { margin: 0 3px; padding: 3px 9px; border-radius: 4px; background: #eee; text-decoration: none; color: #333; }
-        .pagination strong { background: #4285f4; color: #fff; }
-        .summary { font-size: 14px; color: #555; margin-bottom: 8px; }
-        .filter-cell input[type="text"] { width: 90%; padding:2px 4px; font-size:13px; border: 1px solid #bbb; background: #fffde7; outline: none; }
-        .filter-toggle { background: #ffd600; color: #333; border: none; border-radius: 4px; padding: 5px 14px; margin-bottom: 6px; font-size: 14px; cursor: pointer; }
-        .filter-toggle.on { background: #ffee58; }
-        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+    table { border-collapse: collapse; width: 98%; table-layout: fixed; }
+    th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
+    th { background: #eee; }
+
+    th.col-checkbox, td.col-checkbox {
+        width: 36px; min-width: 36px; max-width: 38px; text-align: center;
+    }
+    th.col-id, td.col-id {
+        width: 56px; min-width: 56px; max-width: 60px; text-align: center;
+    }
+
+    td.editing, td.filter-editing { background: #d0e3f7; }
+    .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
+    .filter-indicator { color: #33691e; font-weight: bold; margin-left: 10px; font-size: 14px; background: #f5f5cc; border-radius: 4px; padding: 2px 8px; }
+    .button-group { margin-top: 4px; }
+    .button-group button, .button-group a {
+        margin-right: 8px; padding: 6px 16px; border-radius: 4px;
+        border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer;
+    }
+    .button-group button.delete { background: #db4437; }
+    .button-group button.apply { background: #43a047; }
+    .button-group a.approve { background: #43a047; color: #fff; }
+    .pagination a, .pagination strong { margin: 0 3px; padding: 3px 9px; border-radius: 4px; background: #eee; text-decoration: none; color: #333; }
+    .pagination strong { background: #4285f4; color: #fff; }
+    .summary { font-size: 14px; color: #555; margin-bottom: 8px; }
+    .filter-cell input[type="text"] {
+        width: 100%;
+        padding:2px 4px;
+        font-size:13px;
+        border: 1px solid #bbb;
+        background: #fffde7;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .filter-toggle { background: #ffd600; color: #333; border: none; border-radius: 4px; padding: 5px 14px; margin-bottom: 6px; font-size: 14px; cursor: pointer; }
+    .filter-toggle.on { background: #ffee58; }
+    .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -127,14 +143,15 @@
     <form id="filter-form" method="get" action="{{ url_for('index') }}">
         <table>
             <tr>
-                <th></th>
-                <th>ID</th>
+                <th class="col-checkbox"></th>
+                <th class="col-id">ID</th>
                 {% for f in fields %}
                 <th>{{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}</th>
                 {% endfor %}
             </tr>
             <tr id="filter-row" class="filter-row">
-                <td class="filter-cell" colspan="2" style="text-align:right;color:#666;font-weight:bold;">フィルタ行</td>
+                <td class="col-checkbox filter-cell"></td>
+                <td class="col-id filter-cell" style="text-align:right;color:#666;font-weight:bold;">フィルタ行</td>
                 {% for f in fields %}
                 <td class="filter-cell" data-filter-editable="true">
                     <input type="text" name="{{f.key}}_filter" value="{{ filters.get(f.key, '') }}" placeholder="filter">
@@ -147,11 +164,11 @@
         <table>
             {% for item in items %}
             <tr>
-                <td>
+                <td class="col-checkbox">
                     <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
                     <input type="hidden" name="item_id" value="{{ item['id'] }}">
                 </td>
-                <td>{{ item['id'] }}</td>
+                <td class="col-id">{{ item['id'] }}</td>
                 {% for f in fields %}
                 <td data-editable="true">
                     {{ item[f.key] }}
