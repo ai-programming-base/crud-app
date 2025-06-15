@@ -4,6 +4,8 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import json
+from datetime import datetime
+
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
@@ -70,6 +72,24 @@ def init_child_item_db():
                 status TEXT NOT NULL,
                 checkout_start_date TEXT,
                 checkout_end_date TEXT
+            )
+        ''')
+        db.commit()
+
+def init_application_history_db():
+    with get_db() as db:
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS application_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                applicant TEXT NOT NULL,
+                application_content TEXT,
+                applicant_comment TEXT,
+                application_datetime TEXT NOT NULL,
+                approver TEXT,
+                approver_comment TEXT,
+                approval_datetime TEXT,
+                status TEXT NOT NULL
             )
         ''')
         db.commit()
@@ -259,26 +279,51 @@ def apply_request():
             return redirect(url_for('index'))
 
         db = get_db()
-        # 持ち出し申請の有無を確認
         with_checkout = request.args.get("with_checkout") == "1"
         new_status = "入庫持ち出し申請中" if with_checkout else "入庫申請中"
+
+        # コメント・ユーザー名・承認者取得
+        applicant = g.user['username']
+        applicant_comment = request.args.get('comment', '')
+        approver = request.args.get('approver', '')
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         for id in item_ids:
+            # アイテムのステータスを更新
             db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
 
-        if with_checkout:
-            # 申請フォームから日付取得
-            start_date = request.args.get('start_date', '')
-            end_date = request.args.get('end_date', '')
-            for item_id in item_ids:
-                owners = request.args.getlist(f"owner_list_{item_id}")
+            # 履歴：入庫申請
+            db.execute('''
+                INSERT INTO application_history
+                    (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                id, applicant, "入庫申請", applicant_comment, now_str, approver, "申請中"
+            ))
+
+            if with_checkout:
+                # 履歴：持ち出し申請（入庫申請と分けて2件目）
+                db.execute('''
+                    INSERT INTO application_history
+                        (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    id, applicant, "持ち出し申請", applicant_comment, now_str, approver, "申請中"
+                ))
+
+                # 持ち出し申請 child_item 登録（開始・終了日もセット）
+                start_date = request.args.get('start_date', '')
+                end_date = request.args.get('end_date', '')
+                owners = request.args.getlist(f"owner_list_{id}")
                 for idx, owner in enumerate(owners, 1):
                     db.execute(
                         "INSERT INTO child_item (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date) VALUES (?, ?, ?, ?, ?, ?)",
-                        (item_id, idx, owner, "持ち出し申請中", start_date, end_date)
+                        (id, idx, owner, "持ち出し申請中", start_date, end_date)
                     )
 
         db.commit()
-        # ここで申請内容を再取得
+
+        # 申請内容を再取得して表示
         items = [dict(row) for row in db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         )]
@@ -342,4 +387,5 @@ if __name__ == '__main__':
     init_db()
     init_user_db()
     init_child_item_db()
+    init_application_history_db()
     app.run(debug=True)
