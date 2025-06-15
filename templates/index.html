@@ -175,6 +175,16 @@
             let ids = Array.from(checked).map(cb => cb.value).join(',');
             window.location.href = "/child_items?ids=" + encodeURIComponent(ids);
         }
+
+        function bulkManagerChange() {
+            let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+            if (checked.length < 1) {
+                alert("通し番号を1件以上選択してください");
+                return;
+            }
+            let ids = Array.from(checked).map(cb => cb.value).join(',');
+            window.location.href = "/bulk_manager_change?ids=" + encodeURIComponent(ids);
+        }
     </script>
 </head>
 <body>
@@ -254,6 +264,7 @@
             <a href="{{ url_for('add') }}" class="main-btn">起票</a>
             <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
             <button type="submit" class="main-btn">編集内容を一括保存</button>
+            <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
             <a href="{{ url_for('approval') }}" class="main-btn">承認</a>
             <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
             <button type="button" class="main-btn" onclick="showChildItems()">選択したアイテムの小アイテムを表示</button>

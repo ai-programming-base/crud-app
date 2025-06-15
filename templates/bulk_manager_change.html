@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>管理者一括変更</title>
+    <style>
+        table { border-collapse: collapse; width: 98%; }
+        th, td { border: 1px solid #aaa; padding: 6px 12px; }
+        th { background: #eee; }
+        .button-group { margin-top: 15px; }
+        .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+    </style>
+</head>
+<body>
+    <h1>選択アイテムの管理者一括変更</h1>
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="error-message">
+        {% for msg in messages %}
+          {{ msg }}<br>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% endwith %}
+    <form method="post">
+        <input type="hidden" name="ids" value="{{ ids }}">
+        <table>
+            <tr>
+                <th>ID</th>
+                <th>製品名</th>
+                <th>現在の管理者</th>
+            </tr>
+            {% for item in items %}
+            <tr>
+                <td>{{ item['id'] }}</td>
+                <td>{{ item['product_name'] }}</td>
+                <td>{{ item['sample_manager'] }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        <div style="margin-top:18px;">
+            <label for="new_manager"><b>新しい管理者名:</b></label>
+            <input type="text" id="new_manager" name="new_manager" style="padding:4px 10px; font-size:1rem;">
+        </div>
+        <div class="button-group">
+            <button type="submit" style="background:#43a047; color:#fff;">一括変更</button>
+            <a href="{{ url_for('index') }}" style="background:#aaa; color:#fff; padding:7px 16px; border-radius:4px; text-decoration:none;">キャンセル</a>
+        </div>
+    </form>
+</body>
+</html>

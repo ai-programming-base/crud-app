@@ -439,6 +439,33 @@ def child_items_multiple():
     item_map = {i['id']: i for i in items}
     return render_template('child_items.html', child_items=child_items, item_map=item_map)
 
+@app.route('/bulk_manager_change', methods=['GET', 'POST'])
+@login_required
+def bulk_manager_change():
+    ids_str = request.args.get('ids') if request.method == 'GET' else request.form.get('ids')
+    if not ids_str:
+        flash("通し番号が指定されていません")
+        return redirect(url_for('index'))
+
+    id_list = [int(i) for i in ids_str.split(',') if i.isdigit()]
+    db = get_db()
+    items = db.execute(f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
+    
+    if request.method == 'POST':
+        new_manager = request.form.get('new_manager', '').strip()
+        if not new_manager:
+            flash("新しい管理者名を入力してください")
+            return render_template('bulk_manager_change.html', items=items, ids=ids_str)
+        # 一括更新
+        db.executemany("UPDATE item SET sample_manager=? WHERE id=?", [(new_manager, item['id']) for item in items])
+        db.commit()
+        # 仮メール通知（ダイアログ表示のみ）
+        old_managers = set(item['sample_manager'] for item in items)
+        # ここで実際はメール送信処理
+        flash(f"管理者を「{new_manager}」に一括変更しました。旧管理者・新管理者・承認者にメールで連絡しました（ダイアログ仮表示）。")
+        return redirect(url_for('index'))
+    return render_template('bulk_manager_change.html', items=items, ids=ids_str)
+
 if __name__ == '__main__':
     init_db()
     init_user_db()
