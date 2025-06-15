@@ -390,7 +390,7 @@ def approval():
                 )
                 # 業務テーブル更新
                 if content == "入庫申請":
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
+                    db.execute("UPDATE item SET status=?, sample_manager=? WHERE id=?", ("入庫", username, item_id))
                 elif content == "持ち出し申請":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
                     db.execute("UPDATE child_item SET status=? WHERE item_id=?", ("持ち出し中", item_id))
