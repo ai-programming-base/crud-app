@@ -335,28 +335,73 @@ def apply_request():
 @login_required
 def approval():
     db = get_db()
+    username = g.user['username']
+
+    # 自分が承認者で申請中の案件のみ表示
+    items = db.execute(
+        "SELECT * FROM application_history WHERE approver=? AND status=? ORDER BY application_datetime DESC",
+        (username, "申請中")
+    ).fetchall()
+
     if request.method == 'POST':
         selected_ids = request.form.getlist('selected_ids')
-        comment = request.form.get('reject_comment', '').strip()
+        comment = request.form.get('approve_comment', '').strip()
         action = request.form.get('action')
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if not selected_ids:
             flash("対象を選択してください")
-            items = db.execute("SELECT * FROM item WHERE status LIKE ?", ("%申請中%",)).fetchall()
+            # 再取得
+            items = db.execute(
+                "SELECT * FROM application_history WHERE approver=? AND status=? ORDER BY application_datetime DESC",
+                (username, "申請中")
+            ).fetchall()
             return render_template('approval.html', items=items, fields=INDEX_FIELDS)
 
-        if action == 'approve':
-            for item_id in selected_ids:
-                db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
-            db.commit()
-            return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="承認完了（申請者へメール送信ダイアログ）", finish=True)
-        elif action == 'reject':
-            for item_id in selected_ids:
-                db.execute("UPDATE item SET status=? WHERE id=?", ("入庫差し戻し", item_id))
-            db.commit()
-            return render_template('approval.html', items=[], fields=INDEX_FIELDS, message=f"差し戻し完了: {comment}（申請者へメール送信ダイアログ）", finish=True)
+        for application_id in selected_ids:
+            app_row = db.execute("SELECT * FROM application_history WHERE id=?", (application_id,)).fetchone()
+            if not app_row:
+                continue
+            item_id = app_row['item_id']
+            content = app_row['application_content']
 
-    items = db.execute("SELECT * FROM item WHERE status LIKE ?", ("%申請中%",)).fetchall()
+            if action == 'approve':
+                # application_historyテーブル更新
+                db.execute(
+                    '''
+                    UPDATE application_history SET
+                        approver_comment=?,
+                        approval_datetime=?,
+                        status=?
+                    WHERE id=?
+                    ''',
+                    (comment, now_str, "承認", application_id)
+                )
+                # 業務テーブル更新
+                if content == "入庫申請":
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
+                elif content == "持ち出し申請":
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
+                    db.execute("UPDATE child_item SET status=? WHERE item_id=?", ("持ち出し中", item_id))
+
+            elif action == 'reject':
+                db.execute(
+                    '''
+                    UPDATE application_history SET
+                        approver_comment=?,
+                        approval_datetime=?,
+                        status=?
+                    WHERE id=?
+                    ''',
+                    (comment, now_str, "差し戻し", application_id)
+                )
+                # 差し戻し時、item/child_itemのstatus更新が必要ならここに追加
+
+        db.commit()
+        # 完了メッセージと空リストで再描画
+        return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="処理が完了しました", finish=True)
+
+    # 初期GET時
     return render_template('approval.html', items=items, fields=INDEX_FIELDS)
 
 @app.route('/child_items')

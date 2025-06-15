@@ -1,45 +1,45 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>入庫申請 承認画面</title>
+    <title>申請承認画面</title>
     <style>
-        table { border-collapse: collapse; }
-        th, td { border: 1px solid #aaa; padding: 5px 10px; }
+        table { border-collapse: collapse; width: 98%; }
+        th, td { border: 1px solid #aaa; padding: 6px 12px; }
         th { background: #eee; }
-        .button-group { margin-top: 12px; }
-        .button-group button, .button-group a { margin-right: 8px; padding: 6px 16px; border-radius: 4px; border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
+        .button-group { margin-top: 15px; }
+        .button-group button, .button-group a {
+            margin-right: 8px; padding: 6px 16px; border-radius: 4px;
+            border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer;
+        }
         .button-group button.approve { background: #43a047; }
         .button-group button.reject { background: #db4437; }
         .button-group a.cancel { background: #aaa; }
-        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
         .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
         .comment-box { width: 98%; padding: 6px; margin-top: 10px; font-size: 15px; border-radius: 4px; border: 1px solid #aaa; }
     </style>
     <script>
         function onApprove() {
-            // チェックされている数
             var checked = document.querySelectorAll('input[name="selected_ids"]:checked').length;
             if (checked === 0) {
-                alert("承認対象のアイテムを1件以上選択してください");
+                alert("承認対象を1件以上選択してください");
                 return false;
             }
-            if (!confirm("承認処理を行います。本来は申請者にメール通知します。")) return false;
-            alert("承認完了！メール送信（ダイアログのみ）");
+            if (!confirm("承認しますか？")) return false;
             return true;
         }
         function onReject() {
             var checked = document.querySelectorAll('input[name="selected_ids"]:checked').length;
             if (checked === 0) {
-                alert("差し戻し対象のアイテムを1件以上選択してください");
+                alert("差し戻し対象を1件以上選択してください");
                 return false;
             }
-            let comment = document.getElementById('reject_comment').value.trim();
+            let comment = document.getElementById('approve_comment').value.trim();
             if (!comment) {
                 alert("差し戻しコメントを入力してください");
                 return false;
             }
-            if (!confirm("差し戻し処理を行います。本来は申請者にメール通知します。")) return false;
-            alert("差し戻し完了！メール送信（ダイアログのみ）\nコメント：" + comment);
+            if (!confirm("差し戻ししますか？")) return false;
             return true;
         }
     </script>
@@ -53,7 +53,7 @@
             <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
         </div>
     </div>
-    <h1>入庫申請 承認画面</h1>
+    <h1>申請承認画面（自分が承認者の案件のみ表示）</h1>
     {% if message %}
       <div class="info-message">{{ message }}</div>
     {% endif %}
@@ -62,10 +62,13 @@
         <table>
             <tr>
                 <th><input type="checkbox" onclick="for(let c of document.getElementsByName('selected_ids')) c.checked=this.checked;"></th>
-                <th>ID</th>
-                {% for f in fields %}
-                <th>{{ f.name }}</th>
-                {% endfor %}
+                <th>履歴ID</th>
+                <th>通し番号</th>
+                <th>申請者</th>
+                <th>申請内容</th>
+                <th>申請者コメント</th>
+                <th>申請日時</th>
+                <th>現在ステータス</th>
             </tr>
             {% for item in items %}
             <tr>
@@ -73,15 +76,18 @@
                     <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
                 </td>
                 <td>{{ item['id'] }}</td>
-                {% for f in fields %}
-                <td>{{ item[f.key] }}</td>
-                {% endfor %}
+                <td>{{ item['item_id'] }}</td>
+                <td>{{ item['applicant'] }}</td>
+                <td>{{ item['application_content'] }}</td>
+                <td>{{ item['applicant_comment'] }}</td>
+                <td>{{ item['application_datetime'] }}</td>
+                <td>{{ item['status'] }}</td>
             </tr>
             {% endfor %}
         </table>
         <div style="margin-top:15px;">
-            <label for="reject_comment"><b>差し戻しコメント:</b></label><br>
-            <textarea id="reject_comment" name="reject_comment" class="comment-box" rows="3" placeholder="差し戻し理由・コメントを入力"></textarea>
+            <label for="approve_comment"><b>承認/差し戻しコメント:</b></label><br>
+            <textarea id="approve_comment" name="approve_comment" class="comment-box" rows="3" placeholder="コメントを入力"></textarea>
         </div>
         <div class="button-group">
             <button type="submit" name="action" value="approve" class="approve" onclick="return onApprove();">承認</button>
