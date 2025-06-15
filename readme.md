@@ -1,117 +1,94 @@
-# Python/Flask製 Excelライク在庫管理CRUDアプリ
+Python/Flask製 Excelライク在庫管理CRUDアプリ（2025/06/15更新）
 
-このプロジェクトは、**Python/Flask + SQLite**を用いた  
-「**Excelライクな表操作体験を重視した多項目CRUD＋入庫・持ち出し申請管理アプリ**」のサンプルです。
+【概要】
+  本プロジェクトは Python/Flask + SQLite 製の
+  Excelライクな表操作・複数ロール・入庫/持ち出し申請・承認・履歴管理が可能な在庫CRUDアプリのサンプルです。
 
----
+【プロジェクト構成】
 
-■ プロジェクト構成
+crud_app/
+├── app.py               ... メインFlaskアプリ（全ルーティング・DB処理、fields.jsonに基づく柔軟設計）
+├── fields.json          ... フィールド定義・設定（必須/内部/表示可否管理）
+├── readme.md            ... このファイル
+├── メモ_インポート方法  ... DBインポート方法や注意点
+└── templates/           ... HTMLテンプレート群
+    ├── index.html           ... 一覧・編集・フィルタ・ページネーション・申請・承認画面リンク
+    ├── form.html            ... 追加（ExcelライクUI）
+    ├── apply_form.html      ... 入庫・持ち出し申請画面
+    ├── approval.html        ... 承認・差し戻し画面
+    ├── login.html           ... ログイン画面
+    └── register.html        ... ユーザー登録画面
 
-crud_app/  
-├── app.py             # メインFlaskアプリ（全ルーティング・DB処理、fields.jsonに基づく柔軟設計）  
-├── fields.json        # フィールド定義・設定（必須/内部/表示可否管理）  
-├── templates/         # HTMLテンプレート（一覧・編集・申請・承認・認証系）  
-│   ├── index.html        # 一覧・編集・フィルタ・ページネーション・申請・承認画面リンク  
-│   ├── form.html         # 追加入力（ExcelライクUI）  
-│   ├── apply_form.html   # 入庫・持ち出し申請画面  
-│   ├── approval.html     # 承認・差し戻し画面  
-│   ├── login.html        # ログイン画面  
-│   └── register.html     # ユーザー登録画面  
-├── メモ_インポート方法 # DB import方法や注意メモ  
-└── readme.md           # 本ファイル（構成/仕様/運用/注意点）
+【主な機能・特徴】
+- fields.json で「表示・必須・内部」等のカラム定義を柔軟に管理
+- 一覧は Excel風テーブル。編集は直接セル編集（Tab/Enter/Shift+Tab/Shift+Enterで移動可能）
+- フィルタ・ページネーション・一括編集・一括保存・複数選択削除
+- ログイン・ユーザー登録・複数ロール（manager/owner/general）対応
+- 「起票（新規追加）」ボタンでデータ追加。入力時もセル単位でTab/Enter移動対応
+- 入庫申請フォーム（複数選択可）、持ち出し申請も同時に可能
+  - 持ち出し申請ON時は、各サンプル数分だけ枝番ごとに所有者入力欄（デフォルト申請ユーザー名、Excelライク編集可）が表示
+- 申請後は申請内容を画面下部に一覧表示
+- 申請・承認フロー管理：
+  - 申請・承認操作ごとにapplication_historyテーブルへ履歴登録（申請者・承認者・コメント・時刻など全記録）
+  - 承認時、申請内容に応じて「item.status」「child_item.status」も自動更新
+  - 承認画面には「自分が承認者となっている案件のみ」表示し、一括承認・差し戻し可能
 
----
+【DBスキーマ要点】
+- item
+    id INTEGER PRIMARY KEY AUTOINCREMENT
+    ...（fields.jsonに準拠）
+- child_item
+    id INTEGER PRIMARY KEY AUTOINCREMENT
+    item_id INTEGER NOT NULL
+    branch_no INTEGER NOT NULL
+    owner TEXT NOT NULL
+    status TEXT NOT NULL
+    checkout_start_date TEXT
+    checkout_end_date TEXT
+    UNIQUE(item_id, branch_no)   ← 複合キーで重複禁止＆申請時にON CONFLICTで上書き
+- users / roles / user_roles
+    ...（ユーザー・ロール管理）
+- application_history
+    id INTEGER PRIMARY KEY AUTOINCREMENT
+    item_id INTEGER NOT NULL
+    applicant TEXT NOT NULL
+    application_content TEXT NOT NULL     ← 入庫申請／持ち出し申請
+    applicant_comment TEXT
+    application_datetime TEXT             ← 申請日時
+    approver TEXT NOT NULL
+    approver_comment TEXT
+    approval_datetime TEXT                ← 承認・差し戻し日時
+    status TEXT NOT NULL                  ← 申請中／承認／差し戻し
 
-■ 主な機能・特徴（2025/06/12更新）
+【UI改善・操作感】
+- 一覧・入力フォームとも「Tab/Enter/Shift+Tab/Shift+Enter」対応でExcel風操作性
+    - 一覧…Tabは右、Enterは下、Shift+Tab/Shift+Enterで左・上へ移動
+    - 入力画面…Tab/Enterで右、Shift+Tab/Shift+Enterで左
+- 必須項目はJSでバリデーション
+- セル編集後はhidden inputにも値が自動反映
+- 一覧のボタンは「起票（追加）」が一番左、以降「入庫申請」「編集内容一括保存」「承認」「選択削除」
 
-- **fields.jsonでフィールド定義・表示/必須/管理/内部項目を柔軟に管理**
-- **Excelライクな一覧・一括編集・一括保存・一括削除**
-- **AND部分一致フィルタ・ページネーション**
-- **追加画面（form.html）はinternal=falseのみ対象。必須バリデーションあり**
-- **ユーザー管理/ログイン/複数ロール（manager, owner, general）対応**
-- **申請→承認フロー＋差し戻し（コメント可）、各状態管理（statusカラム）**
-- **インポート時ID指定対応（DB設計で自動採番両立、詳細はメモ参照）**
+【運用上の注意】
+- fields.json変更時は必要に応じてDBを再作成
+- インポート時は「ID」明示指定も可能（既存IDと重複不可、詳細はメモ_インポート方法参照）
+- child_itemはitem_id, branch_noの組み合わせが重複不可。申請時、すでに存在する場合は内容上書き
+- セキュリティやメール通知はダイアログで代用。実運用時は適宜拡張推奨
 
----
+【セットアップ手順】
+1. 依存パッケージ導入
+   pip install flask
+2. アプリ起動
+   cd crud_app
+   python app.py
+3. 管理用テーブル・ユーザ・child_itemなどは初回起動時に自動作成されます
 
-■ **持ち出し申請対応（2025/06/12追加分）**
+【補足】
+- テンプレート・画面のUI/UXカスタマイズはcss, htmlの書き換えで簡単に拡張可能です
+- 子アイテムや履歴管理の設計を他用途にも流用可能
+- このReadmeは最新版の仕様・実装例を元に記述。都度アップデート推奨
 
-- **入庫申請時「持ち出し申請も同時に行う」チェックをONにすると：**
-    - 申請対象の各IDごとに、その「サンプル数」分だけ枝番行を持つ「所有者」表が画面上に動的生成
-    - 枝番は1からサンプル数までインクリメント
-    - 所有者名はデフォルトで申請者ユーザー名。セルはExcelライク編集可能
-- **申請送信時：**
-    - 各対象IDのstatusを「入庫持ち出し申請中」に自動セット（通常申請は「入庫申請中」）
-    - 更に「持ち出し申請」を行った場合、**checkout_request**テーブルに下記を登録
-        - item_id（アイテムID）
-        - branch_no（枝番、1～サンプル数）
-        - owner（入力された所有者名、デフォルトユーザー名）
-        - status（申請直後は「持ち出し申請中」）
-    - 所有者情報はhidden input+contenteditableテーブルでサブミットされる
-
----
-
-■ DBスキーマ例
-
-- **item**  
-  - id INTEGER PRIMARY KEY AUTOINCREMENT  
-  - …（fields.jsonに準拠したフィールド群）  
-- **users / roles / user_roles**（ユーザー・ロール管理用）
-- **checkout_request**（2025/06/12新設・持ち出し申請情報）  
-  - id INTEGER PRIMARY KEY AUTOINCREMENT  
-  - item_id INTEGER NOT NULL  
-  - branch_no INTEGER NOT NULL  
-  - owner TEXT NOT NULL  
-  - status TEXT NOT NULL（申請時は「持ち出し申請中」）
-
----
-
-■ 申請・承認フロー
-
-1. **一覧から複数選択→「入庫申請」ボタン**
-2. **申請フォームで数量チェック、必要項目入力、持ち出し申請も同時に可**
-    - 持ち出し申請ON時は所有者入力表が表示される
-3. **申請ボタンで各itemのstatus更新＋持ち出し申請ならcheckout_requestレコードを追加**
-4. **承認画面で一括承認・差し戻し、コメント付可。差し戻しもstatus管理**
-
----
-
-■ 運用・注意事項
-
-- fields.json変更時はDBスキーマ再作成推奨
-- インポート時IDの明示指定可（重複不可）
-- メール送信はalert/ダイアログで代用（実装省略）
-- セキュリティや排他制御は必要に応じて拡張してください
-
----
-
-■ セットアップ＆使い方
-
-1. **依存パッケージ導入**  
-   `pip install flask`
-
-2. **アプリ起動**  
-   `cd crud_app`  
-   `python app.py`
-
-3. **プロジェクト構成・ファイル確認用**  
-   `./show_project.sh`
-
----
-
-■ fields.jsonサンプル
-
-```json
-[
-  {"name": "品番",    "key": "field1",   "required": true,  "internal": false, "show_in_index": true},
-  {"name": "品名",    "key": "field2",   "required": true,  "internal": false, "show_in_index": true},
-  {"name": "在庫数",  "key": "field3",   "required": false, "internal": false, "show_in_index": true},
-  {"name": "ロケ",    "key": "field4",   "required": false, "internal": false, "show_in_index": true},
-  {"name": "棚番号",  "key": "field5",   "required": false, "internal": false, "show_in_index": true},
-  {"name": "カテゴリ","key": "field6",  "required": false, "internal": false, "show_in_index": true},
-  {"name": "備考1",   "key": "field7",   "required": false, "internal": false, "show_in_index": false},
-  {"name": "備考2",   "key": "field8",   "required": false, "internal": false, "show_in_index": false},
-  {"name": "登録者",  "key": "field9",   "required": false, "internal": false, "show_in_index": false},
-  {"name": "登録日",  "key": "field10",  "required": false, "internal": false, "show_in_index": false},
-  {"name": "状態",    "key": "status",   "required": false, "internal": true,  "show_in_index": true}
-]
+【更新履歴】
+- 2025/06/12: 持ち出し申請・所有者管理対応
+- 2025/06/13: 申請/承認履歴テーブル・承認フロー強化
+- 2025/06/14: child_item複合キー対応・ON CONFLICT実装
+- 2025/06/15: 一覧/入力のセル移動操作改善（Tab/Enter/上下左右Excel風移動）
