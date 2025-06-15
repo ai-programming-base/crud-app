@@ -1,4 +1,9 @@
 [
+    {"name": "製品名",    "key": "product_name",  "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報1", "key": "product_info1", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報2", "key": "product_info2", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報3", "key": "product_info3", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報4", "key": "product_info4", "required": true,  "internal": false, "show_in_index": true},
     {"name": "コメント",  "key": "comment",       "required": false, "internal": false, "show_in_index": true},
     {"name": "受取日",    "key": "received_date", "required": true,  "internal": false, "show_in_index": true},
     {"name": "サンプル数","key": "num_of_samples","required": true,  "internal": false, "show_in_index": true},
