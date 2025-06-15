@@ -71,7 +71,8 @@ def init_child_item_db():
                 owner TEXT NOT NULL,
                 status TEXT NOT NULL,
                 checkout_start_date TEXT,
-                checkout_end_date TEXT
+                checkout_end_date TEXT,
+                UNIQUE(item_id, branch_no)
             )
         ''')
         db.commit()
@@ -311,13 +312,23 @@ def apply_request():
                     id, applicant, "持ち出し申請", applicant_comment, now_str, approver, "申請中"
                 ))
 
-                # 持ち出し申請 child_item 登録（開始・終了日もセット）
+                # 持ち出し申請 child_item 登録（開始・終了日もセット、ON CONFLICTで上書き）
                 start_date = request.args.get('start_date', '')
                 end_date = request.args.get('end_date', '')
                 owners = request.args.getlist(f"owner_list_{id}")
                 for idx, owner in enumerate(owners, 1):
                     db.execute(
-                        "INSERT INTO child_item (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date) VALUES (?, ?, ?, ?, ?, ?)",
+                        '''
+                        INSERT INTO child_item
+                            (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(item_id, branch_no)
+                        DO UPDATE SET
+                            owner=excluded.owner,
+                            status=excluded.status,
+                            checkout_start_date=excluded.checkout_start_date,
+                            checkout_end_date=excluded.checkout_end_date
+                        ''',
                         (id, idx, owner, "持ち出し申請中", start_date, end_date)
                     )
 
