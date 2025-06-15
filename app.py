@@ -243,12 +243,12 @@ def delete_selected():
 def update_items():
     db = get_db()
     ids = request.form.getlist('item_id')
+    user_field_keys = [f['key'] for f in FIELDS if not f.get('internal')]
     for item_id in ids:
         row_values = []
-        for f in FIELDS:
-            value = request.form.get(f"{f['key']}_{item_id}", "")
-            row_values.append(value)
-        set_clause = ", ".join([f"{f['key']}=?" for f in FIELDS])
+        for key in user_field_keys:
+            row_values.append(request.form.get(f"{key}_{item_id}", ""))
+        set_clause = ", ".join([f"{key}=?" for key in user_field_keys])
         db.execute(
             f'UPDATE item SET {set_clause} WHERE id=?',
             row_values + [item_id]
