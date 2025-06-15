@@ -108,11 +108,22 @@
             form.method = "POST";
             form.submit();
         }
+
         function submitApplyRequest() {
             var form = document.getElementById('main-form');
             form.action = "{{ url_for('apply_request') }}";
             form.method = "POST";
             form.submit();
+        }
+
+        function showChildItems() {
+            let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+            if (checked.length < 1) {
+                alert("通し番号を1件以上選択してください");
+                return;
+            }
+            let ids = Array.from(checked).map(cb => cb.value).join(',');
+            window.location.href = "/child_items?ids=" + encodeURIComponent(ids);
         }
     </script>
 </head>
@@ -190,11 +201,12 @@
           {% endfor %}
         </div>
         <div class="button-group" style="margin-top:4px;">
-            <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
+            <a href="{{ url_for('add') }}" class="main-btn">起票</a>
             <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
             <button type="submit" class="main-btn">編集内容を一括保存</button>
-            <a href="{{ url_for('add') }}" class="main-btn">追加</a>
-            <a href="{{ url_for('approval') }}" class="main-btn">承認画面へ</a>
+            <a href="{{ url_for('approval') }}" class="main-btn">承認</a>
+            <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
+            <button type="button" class="main-btn" onclick="showChildItems()">選択したアイテムの小アイテムを表示</button>
         </div>
     </form>
 </body>

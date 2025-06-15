@@ -59,15 +59,17 @@ def init_user_db():
             db.execute("INSERT OR IGNORE INTO roles (name) VALUES (?)", (role,))
         db.commit()
 
-def init_checkout_request_db():
+def init_child_item_db():
     with get_db() as db:
         db.execute('''
-            CREATE TABLE IF NOT EXISTS checkout_request (
+            CREATE TABLE IF NOT EXISTS child_item (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id INTEGER NOT NULL,
                 branch_no INTEGER NOT NULL,
                 owner TEXT NOT NULL,
-                status TEXT NOT NULL
+                status TEXT NOT NULL,
+                checkout_start_date TEXT,
+                checkout_end_date TEXT
             )
         ''')
         db.commit()
@@ -264,13 +266,15 @@ def apply_request():
             db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
 
         if with_checkout:
-            # 申請フォームからowner_list_{item_id}の一覧を受け取る
+            # 申請フォームから日付取得
+            start_date = request.args.get('start_date', '')
+            end_date = request.args.get('end_date', '')
             for item_id in item_ids:
                 owners = request.args.getlist(f"owner_list_{item_id}")
                 for idx, owner in enumerate(owners, 1):
                     db.execute(
-                        "INSERT INTO checkout_request (item_id, branch_no, owner, status) VALUES (?, ?, ?, ?)",
-                        (item_id, idx, owner, "持ち出し申請中")
+                        "INSERT INTO child_item (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date) VALUES (?, ?, ?, ?, ?, ?)",
+                        (item_id, idx, owner, "持ち出し申請中", start_date, end_date)
                     )
 
         db.commit()
@@ -310,8 +314,32 @@ def approval():
     items = db.execute("SELECT * FROM item WHERE status LIKE ?", ("%申請中%",)).fetchall()
     return render_template('approval.html', items=items, fields=INDEX_FIELDS)
 
+@app.route('/child_items')
+@login_required
+def child_items_multiple():
+    ids_str = request.args.get('ids', '')
+    if not ids_str:
+        flash("通し番号が指定されていません")
+        return redirect(url_for('index'))
+    try:
+        id_list = [int(i) for i in ids_str.split(',') if i.isdigit()]
+    except Exception:
+        flash("不正なID指定")
+        return redirect(url_for('index'))
+    if not id_list:
+        flash("通し番号が指定されていません")
+        return redirect(url_for('index'))
+    db = get_db()
+    # 子アイテム取得
+    q = f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(id_list))}) ORDER BY item_id, branch_no"
+    child_items = db.execute(q, id_list).fetchall()
+    # 親アイテムも必要なら（例：item名の付与用）
+    items = db.execute(f"SELECT id, product_name FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
+    item_map = {i['id']: i for i in items}
+    return render_template('child_items.html', child_items=child_items, item_map=item_map)
+
 if __name__ == '__main__':
     init_db()
     init_user_db()
-    init_checkout_request_db()
+    init_child_item_db()
     app.run(debug=True)
