@@ -349,6 +349,63 @@ def apply_request():
 
     return redirect(url_for('index'))
 
+@app.route('/return_request', methods=['POST', 'GET'])
+@login_required
+def return_request():
+    db = get_db()
+    if request.method == 'POST':
+        item_ids = request.form.getlist('selected_ids')
+        if not item_ids:
+            flash("申請対象を選択してください")
+            return redirect(url_for('index'))
+        # ステータスチェック
+        items = db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        ).fetchall()
+        not_accepted = [str(row['id']) for row in items if row['status'] != "持ち出し中"]
+        if not_accepted:
+            flash(f"持ち出し中でないアイテム（ID: {', '.join(not_accepted)}）は持ち出し終了申請できません。")
+            return redirect(url_for('index'))
+
+        items = [dict(row) for row in items]
+        return render_template('return_form.html', items=items, fields=INDEX_FIELDS)
+    
+    # GET（申請フォームからの申請内容送信時）
+    if request.args.get('action') == 'submit':
+        item_ids = request.args.getlist('item_id')
+        checkeds = request.args.getlist('qty_checked')
+        if not checkeds or len(checkeds) != len(item_ids):
+            flash("全ての数量チェックを確認してください")
+            return redirect(url_for('index'))
+
+        # 申請内容
+        applicant = g.user['username']
+        applicant_comment = request.args.get('comment', '')
+        approver = request.args.get('approver', '')
+        return_date = request.args.get('return_date', datetime.now().strftime("%Y-%m-%d"))
+        storage = request.args.get('storage', '')
+
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db = get_db()
+        for id in item_ids:
+            # アイテムstatusを「返却申請中」に
+            db.execute("UPDATE item SET status=? WHERE id=?", ("返却申請中", id))
+            # 履歴追加
+            db.execute('''
+                INSERT INTO application_history
+                    (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                id, applicant, "持ち出し終了申請", applicant_comment, now_str, approver, "申請中"
+            ))
+        db.commit()
+        items = [dict(row) for row in db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        )]
+        return render_template('return_form.html', items=items, fields=INDEX_FIELDS, message="申請が完了しました（ダイアログで通知：本来はメール送信）", finish=True)
+    
+    return redirect(url_for('index'))
+
 @app.route('/approval', methods=['GET', 'POST'])
 @login_required
 def approval():

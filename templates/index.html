@@ -185,6 +185,13 @@
             let ids = Array.from(checked).map(cb => cb.value).join(',');
             window.location.href = "/bulk_manager_change?ids=" + encodeURIComponent(ids);
         }
+
+        function submitReturnRequest() {
+            var form = document.getElementById('main-form');
+            form.action = "{{ url_for('return_request') }}";
+            form.method = "POST";
+            form.submit();
+        }
     </script>
 </head>
 <body>
@@ -263,6 +270,7 @@
         <div class="button-group" style="margin-top:4px;">
             <a href="{{ url_for('add') }}" class="main-btn">起票</a>
             <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
+            <button type="button" class="main-btn" onclick="submitReturnRequest()">持ち出し終了申請</button>
             <button type="submit" class="main-btn">編集内容を一括保存</button>
             <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
             <a href="{{ url_for('approval') }}" class="main-btn">承認</a>

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>持ち出し終了申請</title>
+    <style>
+        /* 入庫申請フォームのスタイル流用 */
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid #aaa; padding: 5px 10px; }
+        th { background: #eee; }
+        .form-field { margin-bottom: 12px; }
+        .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
+        .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+        .form-textarea { height: 56px; resize: vertical; }
+        .button-group { margin-top: 18px; }
+        .main-btn {
+            background: #4285f4; color: #fff; border: none; border-radius: 4px;
+            font-size: 1rem; font-weight: bold; padding: 6px 16px; margin-right: 8px;
+            cursor: pointer; text-decoration: none; transition: background .15s;
+        }
+    </style>
+    <script>
+        function getToday() {
+            const d = new Date();
+            return d.toISOString().slice(0, 10);
+        }
+        document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById('return_date').value = getToday();
+        });
+        function checkAndSubmit() {
+            var allChecked = true;
+            var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
+            if (checks.length > 0) {
+                alert("全ての数量チェックにチェックしてください");
+                return false;
+            }
+            alert("申請が完了しました（本来はメール送信）");
+            return true;
+        }
+    </script>
+</head>
+<body>
+    <h1>持ち出し終了申請</h1>
+    {% if message %}
+      <div class="info-message">{{ message }}</div>
+    {% endif %}
+    {% if not finish %}
+    <form method="get" onsubmit="return checkAndSubmit();">
+        <input type="hidden" name="action" value="submit">
+        <table>
+            <tr>
+                <th>ID</th>
+                {% for f in fields %}
+                <th>{{ f.name }}</th>
+                {% endfor %}
+                <th>数量チェック</th>
+            </tr>
+            {% for item in items %}
+            <tr>
+                <td>
+                    {{ item['id'] }}
+                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
+                </td>
+                {% for f in fields %}
+                <td>{{ item[f.key] }}</td>
+                {% endfor %}
+                <td><input type="checkbox" name="qty_checked"></td>
+            </tr>
+            {% endfor %}
+        </table>
+        <div class="form-field">
+            <label class="form-label" for="return_date">返却確認日</label>
+            <input class="form-input" type="date" id="return_date" name="return_date">
+        </div>
+        <div class="form-field">
+            <label class="form-label" for="storage">保管場所</label>
+            <input class="form-input" type="text" id="storage" name="storage">
+        </div>
+        <div class="form-field">
+            <label class="form-label" for="comment">申請コメント</label>
+            <textarea class="form-textarea" id="comment" name="comment"></textarea>
+        </div>
+        <div class="form-field">
+            <label class="form-label" for="approver">承認者</label>
+            <input class="form-input" type="text" id="approver" name="approver" value="">
+        </div>
+        <div class="button-group">
+            <button type="submit" class="main-btn">申請</button>
+            <a href="{{ url_for('index') }}" class="main-btn" style="background:#aaa;">キャンセル</a>
+        </div>
+    </form>
+    {% endif %}
+    {% if finish %}
+    <h2>申請内容</h2>
+    <table>
+        <tr>
+            <th>ID</th>
+            {% for f in fields %}
+            <th>{{ f.name }}</th>
+            {% endfor %}
+        </tr>
+        {% for item in items %}
+        <tr>
+            <td>{{ item['id'] }}</td>
+            {% for f in fields %}
+            <td>{{ item[f.key] }}</td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </table>
+    <div class="button-group" style="margin-top: 20px;">
+        <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+    </div>
+    {% endif %}
+</body>
+</html>
