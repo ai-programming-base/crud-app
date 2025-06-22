@@ -77,6 +77,25 @@ def init_child_item_db():
         ''')
         db.commit()
 
+def init_item_application_db():
+    with get_db() as db:
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS item_application (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER,
+                new_values TEXT NOT NULL,
+                applicant TEXT NOT NULL,
+                applicant_comment TEXT,
+                approver TEXT,
+                status TEXT NOT NULL,
+                application_datetime TEXT NOT NULL,
+                approval_datetime TEXT,
+                approver_comment TEXT
+            )
+        ''')
+        db.commit()
+
+
 def init_application_history_db():
     with get_db() as db:
         db.execute('''
@@ -259,95 +278,98 @@ def update_items():
 @app.route('/apply_request', methods=['POST', 'GET'])
 @login_required
 def apply_request():
-    if request.method == 'POST':
+    db = get_db()
+
+    # 申請画面の表示（POST:選択済みID受取→フォーム表示）
+    if request.method == 'POST' and not request.form.get('action'):
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
             flash("申請対象を選択してください")
             return redirect(url_for('index'))
-
-        db = get_db()
-        # 申請対象に「入庫前」以外が含まれていないかチェック
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
-        not_accepted = [str(row['id']) for row in items if row['status'] != "入庫前"]
-        if not_accepted:
-            flash(f"入庫前でないアイテム（ID: {', '.join(not_accepted)}）は入庫申請できません。")
-            return redirect(url_for('index'))
-
         items = [dict(row) for row in items]
         return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
 
-    # 申請ボタン（GET）処理
-    if request.args.get('action') == 'submit':
-        item_ids = request.args.getlist('item_id')
-        checkeds = request.args.getlist('qty_checked')
-        if not checkeds or len(checkeds) != len(item_ids):
-            flash("すべての数量チェックを確認してください")
+    # 申請フォーム送信（action=submit: 必須項目チェック＆申請内容をitem_applicationに登録、item.statusのみ即更新）
+    if (request.method == 'GET' and request.args.get('action') == 'submit') or \
+       (request.method == 'POST' and request.form.get('action') == 'submit'):
+        form = request.form if request.method == 'POST' else request.args
+
+        item_ids = form.getlist('item_id')
+        if not item_ids:
+            flash("申請対象が不正です")
             return redirect(url_for('index'))
 
-        db = get_db()
-        with_checkout = request.args.get("with_checkout") == "1"
+        # 必須入力チェック
+        manager = form.get('manager', '').strip()
+        comment = form.get('comment', '').strip()
+        approver = form.get('approver', '').strip()
+        qty_checked = form.getlist('qty_checked')
+        with_checkout = form.get("with_checkout") == "1"
+
+        errors = []
+        if not manager:
+            errors.append("管理者を入力してください。")
+        if not approver:
+            errors.append("承認者を入力してください。")
+        if len(qty_checked) != len(item_ids):
+            errors.append("すべての数量チェックをしてください。")
+        if errors:
+            items = db.execute(
+                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+            ).fetchall()
+            items = [dict(row) for row in items]
+            for msg in errors:
+                flash(msg)
+            return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
+
+        # ステータス
         new_status = "入庫持ち出し申請中" if with_checkout else "入庫申請中"
 
-        # コメント・ユーザー名・承認者取得
         applicant = g.user['username']
-        applicant_comment = request.args.get('comment', '')
-        approver = request.args.get('approver', '')
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        start_date = form.get('start_date', '')
+        end_date = form.get('end_date', '')
+        # 持ち出し同時申請時の所有者欄
+        owner_lists = {}
+        for id in item_ids:
+            # owner_list_<id> が複数存在し得る
+            owner_lists[str(id)] = form.getlist(f'owner_list_{id}')
 
         for id in item_ids:
-            # アイテムのステータスを更新
+            # itemのstatusのみ即時変更
             db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
 
-            # 履歴：入庫申請
+            # item内容を取得し、申請内容をnew_values(dict)として用意
+            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+            new_values = dict(item)
+            new_values['sample_manager'] = manager
+            if with_checkout:
+                new_values['status'] = "入庫持ち出し申請中"
+                new_values['checkout_start_date'] = start_date
+                new_values['checkout_end_date'] = end_date
+                new_values['owner_list'] = owner_lists.get(str(id), [])
+            else:
+                new_values['status'] = "入庫申請中"
+            # item_applicationに申請内容を登録
             db.execute('''
-                INSERT INTO application_history
-                    (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status)
+                INSERT INTO item_application
+                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
-                id, applicant, "入庫申請", applicant_comment, now_str, approver, "申請中"
+                id, json.dumps(new_values, ensure_ascii=False), applicant, comment, approver, "申請中", now_str
             ))
 
-            if with_checkout:
-                # 履歴：持ち出し申請（入庫申請と分けて2件目）
-                db.execute('''
-                    INSERT INTO application_history
-                        (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    id, applicant, "持ち出し申請", applicant_comment, now_str, approver, "申請中"
-                ))
-
-                # 持ち出し申請 child_item 登録（開始・終了日もセット、ON CONFLICTで上書き）
-                start_date = request.args.get('start_date', '')
-                end_date = request.args.get('end_date', '')
-                owners = request.args.getlist(f"owner_list_{id}")
-                for idx, owner in enumerate(owners, 1):
-                    db.execute(
-                        '''
-                        INSERT INTO child_item
-                            (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(item_id, branch_no)
-                        DO UPDATE SET
-                            owner=excluded.owner,
-                            status=excluded.status,
-                            checkout_start_date=excluded.checkout_start_date,
-                            checkout_end_date=excluded.checkout_end_date
-                        ''',
-                        (id, idx, owner, "持ち出し申請中", start_date, end_date)
-                    )
+            # 履歴（申請）も必要ならここで追加（省略可）
 
         db.commit()
-
-        # 申請内容を再取得して表示
-        items = [dict(row) for row in db.execute(
-            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
-        )]
-        return render_template('apply_form.html', items=items, fields=INDEX_FIELDS, message="申請が完了しました（ダイアログで通知：本来はメール送信）", finish=True)
+        flash("申請内容を保存しました。承認待ちです。")
+        return redirect(url_for('index'))
 
     return redirect(url_for('index'))
+
 
 @app.route('/return_request', methods=['POST', 'GET'])
 @login_required
@@ -412,11 +434,20 @@ def approval():
     db = get_db()
     username = g.user['username']
 
-    # 自分が承認者で申請中の案件のみ表示
-    items = db.execute(
-        "SELECT * FROM application_history WHERE approver=? AND status=? ORDER BY application_datetime DESC",
+    # 承認対象リスト取得 & 申請内容をパースして渡す
+    items_raw = db.execute(
+        "SELECT * FROM item_application WHERE approver=? AND status=? ORDER BY application_datetime DESC",
         (username, "申請中")
     ).fetchall()
+    parsed_items = []
+    for item in items_raw:
+        parsed = dict(item)
+        try:
+            parsed['parsed_values'] = json.loads(item['new_values'])
+        except Exception:
+            parsed['parsed_values'] = {}
+        parsed_items.append(parsed)
+    items = parsed_items
 
     if request.method == 'POST':
         selected_ids = request.form.getlist('selected_ids')
@@ -426,57 +457,102 @@ def approval():
 
         if not selected_ids:
             flash("対象を選択してください")
-            # 再取得
-            items = db.execute(
-                "SELECT * FROM application_history WHERE approver=? AND status=? ORDER BY application_datetime DESC",
+            # 再度リスト生成
+            items_raw = db.execute(
+                "SELECT * FROM item_application WHERE approver=? AND status=? ORDER BY application_datetime DESC",
                 (username, "申請中")
             ).fetchall()
-            return render_template('approval.html', items=items, fields=INDEX_FIELDS)
+            parsed_items = []
+            for item in items_raw:
+                parsed = dict(item)
+                try:
+                    parsed['parsed_values'] = json.loads(item['new_values'])
+                except Exception:
+                    parsed['parsed_values'] = {}
+                parsed_items.append(parsed)
+            return render_template('approval.html', items=parsed_items, fields=INDEX_FIELDS)
 
-        for application_id in selected_ids:
-            app_row = db.execute("SELECT * FROM application_history WHERE id=?", (application_id,)).fetchone()
+        for app_id in selected_ids:
+            app_row = db.execute("SELECT * FROM item_application WHERE id=?", (app_id,)).fetchone()
             if not app_row:
                 continue
             item_id = app_row['item_id']
-            content = app_row['application_content']
+            new_values = json.loads(app_row['new_values'])
 
             if action == 'approve':
-                # application_historyテーブル更新
+                # itemテーブルのカラムのみでUPDATE
+                item_columns = set(FIELD_KEYS)  # fields.jsonのkeyのみ
+                filtered_values = {k: v for k, v in new_values.items() if k in item_columns}
+                set_clause = ", ".join([f"{k}=?" for k in filtered_values.keys()])
+                params = [filtered_values[k] for k in filtered_values.keys()]
                 db.execute(
-                    '''
-                    UPDATE application_history SET
-                        approver_comment=?,
-                        approval_datetime=?,
-                        status=?
-                    WHERE id=?
-                    ''',
-                    (comment, now_str, "承認", application_id)
+                    f'UPDATE item SET {set_clause} WHERE id=?',
+                    params + [item_id]
                 )
-                # 業務テーブル更新
-                if content == "入庫申請":
-                    db.execute("UPDATE item SET status=?, sample_manager=? WHERE id=?", ("入庫", username, item_id))
-                elif content == "持ち出し申請":
+
+                # ステータス反映
+                status = new_values.get('status')
+                if status == "入庫持ち出し申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
-                    db.execute("UPDATE child_item SET status=? WHERE item_id=?", ("持ち出し中", item_id))
+                else:
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
+
+                # child_item生成・更新（持ち出し同時申請の場合のみ）
+                if status == "入庫持ち出し申請中":
+                    start_date = new_values.get("checkout_start_date", "")
+                    end_date = new_values.get("checkout_end_date", "")
+                    owners = new_values.get("owner_list", [])
+                    if not owners:
+                        num_of_samples = int(new_values.get("num_of_samples", 1))
+                        owner = new_values.get("sample_manager", "")
+                        owners = [owner] * num_of_samples
+                    for idx, owner in enumerate(owners, 1):
+                        db.execute(
+                            '''
+                            INSERT INTO child_item
+                                (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(item_id, branch_no)
+                            DO UPDATE SET
+                                owner=excluded.owner,
+                                status=excluded.status,
+                                checkout_start_date=excluded.checkout_start_date,
+                                checkout_end_date=excluded.checkout_end_date
+                            ''',
+                            (item_id, idx, owner, "持ち出し中", start_date, end_date)
+                        )
+
+                # item_applicationのstatusを承認に
+                db.execute('''
+                    UPDATE item_application SET
+                        approver_comment=?, approval_datetime=?, status=?
+                    WHERE id=?
+                ''', (comment, now_str, "承認", app_id))
+
+                # application_historyにも履歴を登録
+                db.execute('''
+                    INSERT INTO application_history
+                    (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status, approval_datetime, approver_comment)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    item_id, app_row['applicant'], "入庫申請", app_row['applicant_comment'], app_row['application_datetime'], app_row['approver'], "承認", now_str, comment
+                ))
 
             elif action == 'reject':
                 db.execute(
                     '''
-                    UPDATE application_history SET
-                        approver_comment=?,
-                        approval_datetime=?,
-                        status=?
+                    UPDATE item_application SET
+                        approver_comment=?, approval_datetime=?, status=?
                     WHERE id=?
                     ''',
-                    (comment, now_str, "差し戻し", application_id)
+                    (comment, now_str, "差し戻し", app_id)
                 )
-                # 差し戻し時、item/child_itemのstatus更新が必要ならここに追加
+                # application_historyへの差し戻し履歴追加（必要なら）
 
         db.commit()
-        # 完了メッセージと空リストで再描画
+        # 完了後は空リスト＋メッセージ表示
         return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="処理が完了しました", finish=True)
 
-    # 初期GET時
     return render_template('approval.html', items=items, fields=INDEX_FIELDS)
 
 @app.route('/child_items')
@@ -534,5 +610,6 @@ if __name__ == '__main__':
     init_db()
     init_user_db()
     init_child_item_db()
+    init_item_application_db()
     init_application_history_db()
     app.run(debug=True)
