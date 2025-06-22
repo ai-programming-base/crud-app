@@ -27,42 +27,6 @@
         .form-textarea { height: 56px; resize: vertical; }
         .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
     </style>
-    <script>
-        // 日付をYYYY-MM-DDで取得
-        function getToday() {
-            const d = new Date();
-            return d.toISOString().slice(0, 10);
-        }
-        // 3ヶ月先の月末
-        function getThreeMonthLast() {
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = now.getMonth();
-            // 3ヶ月後
-            const after3 = new Date(y, m + 3, 1);
-            // 3ヶ月後の月の0日＝3ヶ月後月の前月末日
-            const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
-            return lastDay.toISOString().slice(0, 10);
-        }
-        document.addEventListener("DOMContentLoaded", function() {
-            document.getElementById('start_date').value = getToday();
-            document.getElementById('end_date').value = getThreeMonthLast();
-            // 管理者自動入力
-            {% if g.user %}
-                document.getElementById('manager').value = "{{ g.user['username'] }}";
-            {% endif %}
-        });
-        function checkAndSubmit() {
-            var allChecked = true;
-            var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
-            if (checks.length > 0) {
-                alert("全ての数量チェックにチェックしてください");
-                return false;
-            }
-            alert("申請が完了しました（本来はメール送信）");
-            return true;
-        }
-    </script>
 </head>
 <body>
     <div style="width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;">
@@ -102,24 +66,30 @@
             {% endfor %}
         </table>
         <div style="margin-top: 24px; margin-bottom: 8px;">
-            <div class="form-field">
-                <label class="form-label">
-                    <input type="checkbox" name="with_checkout" value="1"> 持ち出し申請を同時に行う
-                </label>
-            </div>
-            <div class="form-field">
-                <label class="form-label" for="start_date">持ち出し開始日</label>
-                <input class="form-input" type="date" id="start_date" name="start_date">
-            </div>
-            <div class="form-field">
-                <label class="form-label" for="end_date">持ち出し終了日</label>
-                <input class="form-input" type="date" id="end_date" name="end_date">
-            </div>
+            <!-- 管理者欄（最上部） -->
             <div class="form-field">
                 <label class="form-label" for="manager">管理者</label>
                 <input class="form-input" type="text" id="manager" name="manager" value="">
             </div>
-            <div id="owner-tables-area" style="margin-top:25px; display:none;"></div>
+            <!-- チェックボックス -->
+            <div class="form-field">
+                <label class="form-label">
+                    <input type="checkbox" name="with_checkout" value="1" id="with_checkout_cb"> 持ち出し申請を同時に行う
+                </label>
+            </div>
+            <!-- 持ち出し申請欄：トグル表示 -->
+            <div id="checkout-area" style="display:none;">
+                <div class="form-field">
+                    <label class="form-label" for="start_date">持ち出し開始日</label>
+                    <input class="form-input" type="date" id="start_date" name="start_date">
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="end_date">持ち出し終了日</label>
+                    <input class="form-input" type="date" id="end_date" name="end_date">
+                </div>
+                <div id="owner-tables-area" style="margin-top:25px;"></div>
+            </div>
+            <!-- 申請コメント、承認者は常時表示 -->
             <div class="form-field">
                 <label class="form-label" for="comment">申請コメント</label>
                 <textarea class="form-textarea" id="comment" name="comment"></textarea>
@@ -158,8 +128,54 @@
     </div>
     {% endif %}
     <script>
+        // 日付セット
+        function getToday() {
+            const d = new Date();
+            return d.toISOString().slice(0, 10);
+        }
+        function getThreeMonthLast() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth();
+            const after3 = new Date(y, m + 3, 1);
+            const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
+            return lastDay.toISOString().slice(0, 10);
+        }
+        document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById('start_date').value = getToday();
+            document.getElementById('end_date').value = getThreeMonthLast();
+            // 管理者自動入力
+            {% if g.user %}
+                document.getElementById('manager').value = "{{ g.user['username'] }}";
+            {% endif %}
+            // チェックボックス初期化＆イベント
+            const cb = document.getElementById('with_checkout_cb');
+            const area = document.getElementById('checkout-area');
+            function toggleCheckoutArea() {
+                area.style.display = cb.checked ? "block" : "none";
+                if (cb.checked && typeof createOwnerTables === 'function') {
+                    createOwnerTables();
+                } else {
+                    document.getElementById('owner-tables-area').innerHTML = '';
+                }
+            }
+            cb.addEventListener('change', toggleCheckoutArea);
+            toggleCheckoutArea();
+        });
+        // 申請時チェック
+        function checkAndSubmit() {
+            var allChecked = true;
+            var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
+            if (checks.length > 0) {
+                alert("全ての数量チェックにチェックしてください");
+                return false;
+            }
+            alert("申請が完了しました（本来はメール送信）");
+            return true;
+        }
+        // 所有者テーブル生成（持ち出し申請ON時のみ呼ばれる）
         function createOwnerTables() {
-            let checked = document.querySelector('input[name="with_checkout"]:checked');
+            let checked = document.getElementById('with_checkout_cb').checked;
             let area = document.getElementById('owner-tables-area');
             area.innerHTML = '';
             if (!checked) {
@@ -167,7 +183,6 @@
                 return;
             }
             let items = [];
-            // サーバからitems配列を受け取る
             {% for item in items %}
                 items.push({
                     id: "{{ item['id'] }}",
@@ -187,7 +202,6 @@
                 let n = it.num_of_samples;
                 if (!n || n<=0) n = 1;
                 for (let i=1; i<=n; i++) {
-                    // 各セルで編集可、hiddenでsubmit
                     t += `<tr>
                     <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${i}</td>
                     <td style="border:1px solid #aaa;padding:5px 10px;" contenteditable="true">
@@ -204,17 +218,12 @@
             // 編集内容をhidden inputに反映
             let tds = area.querySelectorAll('td[contenteditable="true"]');
             tds.forEach(td => {
-            td.addEventListener('input', function() {
-                let input = td.querySelector('input[type="hidden"]');
-                input.value = td.innerText.trim();
-            });
+                td.addEventListener('input', function() {
+                    let input = td.querySelector('input[type="hidden"]');
+                    input.value = td.innerText.trim();
+                });
             });
         }
-        // チェックボックスで表示/非表示切り替え
-        document.addEventListener("DOMContentLoaded", function() {
-            let cb = document.querySelector('input[name="with_checkout"]');
-            if (cb) cb.addEventListener('change', createOwnerTables);
-        });
     </script>
 </body>
 </html>
