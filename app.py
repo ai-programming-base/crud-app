@@ -266,9 +266,16 @@ def apply_request():
             return redirect(url_for('index'))
 
         db = get_db()
-        items = [dict(row) for row in db.execute(
+        # 申請対象に「入庫前」以外が含まれていないかチェック
+        items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
-        )]
+        ).fetchall()
+        not_accepted = [str(row['id']) for row in items if row['status'] != "入庫前"]
+        if not_accepted:
+            flash(f"入庫前でないアイテム（ID: {', '.join(not_accepted)}）は入庫申請できません。")
+            return redirect(url_for('index'))
+
+        items = [dict(row) for row in items]
         return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
 
     # 申請ボタン（GET）処理
