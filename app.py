@@ -375,6 +375,7 @@ def apply_request():
 @login_required
 def return_request():
     db = get_db()
+    # 申請フォーム表示（POST:選択済みID受取→フォーム表示）
     if request.method == 'POST':
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
@@ -392,7 +393,7 @@ def return_request():
         items = [dict(row) for row in items]
         return render_template('return_form.html', items=items, fields=INDEX_FIELDS)
     
-    # GET（申請フォームからの申請内容送信時）
+    # 申請フォームからの送信時（GET, action=submit）: item_applicationへ申請内容登録
     if request.args.get('action') == 'submit':
         item_ids = request.args.getlist('item_id')
         checkeds = request.args.getlist('qty_checked')
@@ -408,25 +409,31 @@ def return_request():
         storage = request.args.get('storage', '')
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        db = get_db()
         for id in item_ids:
-            # アイテムstatusを「返却申請中」に
+            # itemのstatusのみ即時「返却申請中」に変更
             db.execute("UPDATE item SET status=? WHERE id=?", ("返却申請中", id))
-            # 履歴追加
+
+            # item内容取得＋申請内容(new_values)用意
+            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+            new_values = dict(item)
+            new_values['return_date'] = return_date
+            new_values['storage'] = storage
+            new_values['status'] = "返却申請中"
+            new_values['comment'] = applicant_comment
+
             db.execute('''
-                INSERT INTO application_history
-                    (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status)
+                INSERT INTO item_application
+                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
-                id, applicant, "持ち出し終了申請", applicant_comment, now_str, approver, "申請中"
+                id, json.dumps(new_values, ensure_ascii=False), applicant, applicant_comment, approver, "申請中", now_str
             ))
         db.commit()
-        items = [dict(row) for row in db.execute(
-            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
-        )]
-        return render_template('return_form.html', items=items, fields=INDEX_FIELDS, message="申請が完了しました（ダイアログで通知：本来はメール送信）", finish=True)
+        flash("申請内容を保存しました。承認待ちです。")
+        return redirect(url_for('index'))
     
     return redirect(url_for('index'))
+
 
 @app.route('/approval', methods=['GET', 'POST'])
 @login_required
@@ -485,20 +492,16 @@ def approval():
                 filtered_values = {k: v for k, v in new_values.items() if k in item_columns}
                 set_clause = ", ".join([f"{k}=?" for k in filtered_values.keys()])
                 params = [filtered_values[k] for k in filtered_values.keys()]
-                db.execute(
-                    f'UPDATE item SET {set_clause} WHERE id=?',
-                    params + [item_id]
-                )
+                if set_clause:  # 念のため
+                    db.execute(
+                        f'UPDATE item SET {set_clause} WHERE id=?',
+                        params + [item_id]
+                    )
 
-                # ステータス反映
                 status = new_values.get('status')
+                # 持ち出し同時申請の場合
                 if status == "入庫持ち出し申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
-                else:
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
-
-                # child_item生成・更新（持ち出し同時申請の場合のみ）
-                if status == "入庫持ち出し申請中":
                     start_date = new_values.get("checkout_start_date", "")
                     end_date = new_values.get("checkout_end_date", "")
                     owners = new_values.get("owner_list", [])
@@ -521,6 +524,21 @@ def approval():
                             ''',
                             (item_id, idx, owner, "持ち出し中", start_date, end_date)
                         )
+                # 入庫申請の場合
+                elif status == "入庫申請中":
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
+                # 返却申請の場合
+                elif status == "返却申請中":
+                    # item.status = "入庫"、storage・返却日など反映
+                    db.execute(
+                        "UPDATE item SET status=?, storage=? WHERE id=?",
+                        ("入庫", new_values.get("storage", ""), item_id)
+                    )
+                    # child_item（該当item_id全部）を「返却済」状態＋返却日反映
+                    db.execute(
+                        "UPDATE child_item SET status=?, checkout_end_date=? WHERE item_id=?",
+                        ("返却済", new_values.get("return_date", ""), item_id)
+                    )
 
                 # item_applicationのstatusを承認に
                 db.execute('''
@@ -535,7 +553,14 @@ def approval():
                     (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status, approval_datetime, approver_comment)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    item_id, app_row['applicant'], "入庫申請", app_row['applicant_comment'], app_row['application_datetime'], app_row['approver'], "承認", now_str, comment
+                    item_id, app_row['applicant'],
+                    # 履歴の内容は申請種別に応じて
+                    "入庫申請" if status == "入庫申請中"
+                    else "入庫持ち出し申請" if status == "入庫持ち出し申請中"
+                    else "持ち出し終了申請" if status == "返却申請中"
+                    else (app_row['application_content'] or status or ""),
+                    app_row['applicant_comment'], app_row['application_datetime'], app_row['approver'],
+                    "承認", now_str, comment
                 ))
 
             elif action == 'reject':
@@ -554,6 +579,7 @@ def approval():
         return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="処理が完了しました", finish=True)
 
     return render_template('approval.html', items=items, fields=INDEX_FIELDS)
+
 
 @app.route('/child_items')
 @login_required
