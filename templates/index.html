@@ -204,6 +204,9 @@
         </div>
     </div>
     <h1>Item List</h1>
+    <div style="margin-bottom:14px;">
+        <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
+    </div>
     {% with messages = get_flashed_messages() %}
     {% if messages %}
       <div class="error-message">
