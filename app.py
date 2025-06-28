@@ -656,6 +656,37 @@ def bulk_manager_change():
             return redirect(url_for('index'))
     return render_template('bulk_manager_change.html', items=items, ids=ids_str)
 
+@app.route('/my_applications')
+@login_required
+def my_applications():
+    status = request.args.get('status', 'all')
+    db = get_db()
+    params = [g.user['username']]
+    where = "applicant=?"
+    if status == "approved":
+        where += " AND status='承認'"
+    elif status == "pending":
+        where += " AND status!='承認'"
+    apps = db.execute(f"""
+        SELECT * FROM item_application
+        WHERE {where}
+        ORDER BY application_datetime DESC
+    """, params).fetchall()
+    return render_template(
+        'my_applications.html',
+        applications=apps,
+        status=status
+    )
+
+@app.template_filter('loadjson')
+def loadjson_filter(s):
+    if not s:
+        return {}
+    try:
+        return json.loads(s)
+    except Exception:
+        return {}
+    
 if __name__ == '__main__':
     init_db()
     init_user_db()

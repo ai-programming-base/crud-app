@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>申請アイテム一覧</title>
+    <style>
+        table { border-collapse: collapse; width: 98%; }
+        th, td { border: 1px solid #aaa; padding: 6px 12px; }
+        th { background: #eee; }
+        .btn { margin: 0 4px 10px 0; padding: 7px 16px; border-radius: 4px; border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
+        .btn.selected { background: #33691e; }
+        .status-f { color: #db4437; }
+        .status-s { color: #3161c4; }
+        .status-a { color: #43a047; }
+    </style>
+</head>
+<body>
+    <h1>自分が申請したアイテム</h1>
+    <div style="margin-bottom:20px;">
+        <a href="{{ url_for('my_applications', status='all', from_menu=request.args.get('from_menu')) }}" class="btn{% if status=='all' %} selected{% endif %}">全て</a>
+        <a href="{{ url_for('my_applications', status='pending', from_menu=request.args.get('from_menu')) }}" class="btn{% if status=='pending' %} selected{% endif %}">未承認</a>
+        <a href="{{ url_for('my_applications', status='approved', from_menu=request.args.get('from_menu')) }}" class="btn{% if status=='approved' %} selected{% endif %}">承認済み</a>
+        <a href="{% if request.args.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
+    </div>
+    <table>
+        <tr>
+            <th>申請ID</th>
+            <th>通し番号</th>
+            <th>申請日時</th>
+            <th>申請内容</th>
+            <th>ステータス</th>
+            <th>承認者</th>
+            <th>承認日時</th>
+            <th>コメント</th>
+        </tr>
+        {% for app in applications %}
+        <tr>
+            <td>{{ app['id'] }}</td>
+            <td>{{ app['item_id'] }}</td>
+            <td>{{ app['application_datetime'] }}</td>
+            <td>
+                {% set vals = app['new_values'] | safe | loadjson %}
+                {% if vals.status == '入庫持ち出し申請中' %}
+                  入庫持ち出し申請
+                {% elif vals.status == '入庫申請中' %}
+                  入庫申請
+                {% elif vals.status == '返却申請中' %}
+                  持ち出し終了申請
+                {% else %}
+                  {{ vals.status or '' }}
+                {% endif %}
+            </td>
+            <td>
+                {% if app['status'] == '承認' %}
+                    <span class="status-a">承認済</span>
+                {% elif app['status'] == '差し戻し' %}
+                    <span class="status-f">差し戻し</span>
+                {% else %}
+                    <span class="status-s">申請中</span>
+                {% endif %}
+            </td>
+            <td>{{ app['approver'] }}</td>
+            <td>{{ app['approval_datetime'] }}</td>
+            <td>{{ app['approver_comment'] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
