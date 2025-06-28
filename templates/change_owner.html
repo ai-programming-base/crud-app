@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>所有者変更</title>
+    <style>
+        table { border-collapse: collapse; width: 98%; }
+        th, td { border: 1px solid #aaa; padding: 6px 12px; }
+        th { background: #eee; }
+        td.editing { background: #d0e3f7; }
+        .button-group { margin-top: 16px; }
+        .main-btn { background: #4285f4; color: #fff; border: none; border-radius: 4px; font-size: 1rem; font-weight: bold; padding: 6px 16px; margin-right: 8px; cursor: pointer; text-decoration: none;}
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Excel風セル編集
+            const cells = Array.from(document.querySelectorAll('td[data-editable="true"]'));
+            cells.forEach((td, idx) => {
+                td.addEventListener('click', function(e) {
+                    if (td.classList.contains('editing')) return;
+                    td.classList.add('editing');
+                    let oldValue = td.innerText;
+                    td.contentEditable = true;
+                    td.focus();
+
+                    function finishEdit() {
+                        td.classList.remove('editing');
+                        td.contentEditable = false;
+                        td.removeEventListener('blur', finishEdit);
+                        td.removeEventListener('keydown', keyHandler);
+                        let hidden = td.querySelector('input[type="hidden"]');
+                        if (hidden) hidden.value = td.innerText.trim();
+                    }
+                    function keyHandler(e) {
+                        // EnterやTabで次セル、Shift+Tab/Shift+Enterで前セル
+                        if (e.key === 'Enter' || e.key === 'Tab') {
+                            e.preventDefault();
+                            td.blur(); // 値確定
+                            let nextIdx = idx + (e.shiftKey ? -1 : 1);
+                            if (nextIdx >= 0 && nextIdx < cells.length) {
+                                setTimeout(() => {
+                                    cells[nextIdx].click();
+                                }, 1);
+                            }
+                        } else if (e.key === 'Escape') {
+                            td.innerText = oldValue;
+                            td.blur();
+                        }
+                    }
+                    td.addEventListener('blur', finishEdit);
+                    td.addEventListener('keydown', keyHandler);
+                });
+            });
+
+            // フォームsubmit時、全セル編集終了（blur）
+            document.querySelector('form').addEventListener('submit', function() {
+                cells.forEach(td => { if (td.isContentEditable) td.blur(); });
+            });
+        });
+    </script>
+</head>
+<body>
+    <h1>所有者変更（持ち出し中アイテムのみ）</h1>
+    <form method="post">
+        <input type="hidden" name="ids" value="{{ ids }}">
+        <table>
+            <tr>
+                <th>親ID</th>
+                <th>製品名</th>
+                <th>枝番</th>
+                <th>現在の所有者</th>
+                <th>新しい所有者</th>
+            </tr>
+            {% for ci in child_items %}
+            <tr>
+                <td>{{ ci.item_id }}</td>
+                <td>
+                  {% for item in items %}
+                    {% if item.id == ci.item_id %}
+                        {{ item.product_name }}
+                    {% endif %}
+                  {% endfor %}
+                </td>
+                <td>{{ ci.branch_no }}</td>
+                <td>{{ ci.owner }}</td>
+                <td data-editable="true">
+                    <input type="hidden" name="owner_{{ ci.item_id }}_{{ ci.branch_no }}" value="{{ ci.owner }}">
+                    {{ ci.owner }}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+        <div class="button-group">
+            <button type="submit" class="main-btn">変更を保存</button>
+            <a href="{{ url_for('index') }}" class="main-btn" style="background:#aaa;">キャンセル</a>
+        </div>
+    </form>
+</body>
+</html>

@@ -192,6 +192,17 @@
             form.method = "POST";
             form.submit();
         }
+
+        function changeOwners() {
+            let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+            if (checked.length < 1) {
+                alert("通し番号を1件以上選択してください");
+                return;
+            }
+            let ids = Array.from(checked).map(cb => cb.value).join(',');
+            window.location.href = "/change_owner?ids=" + encodeURIComponent(ids);
+        }
+
     </script>
 </head>
 <body>
@@ -274,7 +285,7 @@
             <a href="{{ url_for('add') }}" class="main-btn">起票</a>
             <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
             <button type="button" class="main-btn" onclick="submitReturnRequest()">持ち出し終了申請</button>
-            <button type="submit" class="main-btn">編集内容を一括保存</button>
+            <button type="button" class="main-btn" onclick="changeOwners()">所有者を変更</button>
             <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
             <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
             <button type="button" class="main-btn" onclick="showChildItems()">選択したアイテムの小アイテムを表示</button>

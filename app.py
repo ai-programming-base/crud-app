@@ -687,6 +687,67 @@ def loadjson_filter(s):
     except Exception:
         return {}
     
+@app.route('/change_owner', methods=['GET', 'POST'])
+@login_required
+def change_owner():
+    db = get_db()
+    ids_str = request.args.get('ids') if request.method == 'GET' else request.form.get('ids')
+    if not ids_str:
+        flash("通し番号が指定されていません")
+        return redirect(url_for('index'))
+    id_list = [int(i) for i in ids_str.split(',') if i.isdigit()]
+
+    # 対象item（持ち出し中のみ）
+    items = db.execute(f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
+    target_ids = [item['id'] for item in items if item['status'] == "持ち出し中"]
+    if not target_ids:
+        flash("選択した中に所有者変更できるアイテムがありません（持ち出し中のみ可能）")
+        return redirect(url_for('index'))
+
+    # 子アイテム取得（枝番順）
+    child_items = db.execute(
+        f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(target_ids))}) ORDER BY item_id, branch_no",
+        target_ids
+    ).fetchall()
+
+    # 編集画面
+    if request.method == 'GET':
+        return render_template(
+            'change_owner.html',
+            items=items,
+            child_items=child_items,
+            ids=','.join(str(i) for i in target_ids)
+        )
+
+    # POST: 変更反映
+    updates = []
+    for ci in child_items:
+        owner_key = f"owner_{ci['item_id']}_{ci['branch_no']}"
+        new_owner = request.form.get(owner_key, '').strip()
+        if new_owner and new_owner != ci['owner']:
+            updates.append((new_owner, ci['id']))
+    if updates:
+        db.executemany("UPDATE child_item SET owner=? WHERE id=?", updates)
+        db.commit()
+        # 履歴記録
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for ci, (new_owner, _) in zip(child_items, updates):
+            db.execute('''
+                INSERT INTO application_history
+                (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status, approval_datetime, approver_comment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                ci['item_id'], g.user['username'],
+                "所有者変更", f"{ci['branch_no']}番 所有者: {ci['owner']}→{new_owner}",
+                now_str, "", "承認不要", now_str, ""
+            ))
+        db.commit()
+        flash("所有者を変更しました。管理者・責任者・自分にメール送信しました（仮実装）。")
+    else:
+        flash("変更はありませんでした。")
+    return redirect(url_for('index'))
+
+
 if __name__ == '__main__':
     init_db()
     init_user_db()
