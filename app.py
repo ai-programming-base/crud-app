@@ -181,13 +181,11 @@ def register():
     return render_template('register.html', roles=roles)
 
 
-# 追加: 機能選択メニュー画面ルート
 @app.route('/')
 @login_required
 def menu():
     return render_template('menu.html')
 
-# 一覧表は /list に分離（元のindex関数名はそのままでもOK）
 @app.route('/list')
 @login_required
 def index():
@@ -251,7 +249,10 @@ def add():
         if 'add_and_next' in request.form:
             return render_template('form.html', fields=USER_FIELDS, values=user_values, message="登録しました。同じ内容で新規入力できます。")
         else:
-            return redirect(url_for('index'))
+            if request.form.get('from_menu') or request.args.get('from_menu'):
+                return redirect(url_for('menu'))
+            else:
+                return redirect(url_for('index'))
 
     return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS])
 
@@ -263,7 +264,10 @@ def delete_selected():
         db = get_db()
         db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
         db.commit()
-    return redirect(url_for('index'))
+    if request.form.get('from_menu') or request.args.get('from_menu'):
+        return redirect(url_for('menu'))
+    else:
+        return redirect(url_for('index'))
 
 @app.route('/update_items', methods=['POST'])
 @login_required
@@ -281,7 +285,10 @@ def update_items():
             row_values + [item_id]
         )
     db.commit()
-    return redirect(url_for('index'))
+    if request.form.get('from_menu') or request.args.get('from_menu'):
+        return redirect(url_for('menu'))
+    else:
+        return redirect(url_for('index'))
 
 @app.route('/apply_request', methods=['POST', 'GET'])
 @login_required
@@ -374,7 +381,10 @@ def apply_request():
 
         db.commit()
         flash("申請内容を保存しました。承認待ちです。")
-        return redirect(url_for('index'))
+        if request.form.get('from_menu') or request.args.get('from_menu'):
+            return redirect(url_for('menu'))
+        else:
+            return redirect(url_for('index'))
 
     return redirect(url_for('index'))
 
@@ -438,7 +448,10 @@ def return_request():
             ))
         db.commit()
         flash("申請内容を保存しました。承認待ちです。")
-        return redirect(url_for('index'))
+        if request.args.get('from_menu') or request.form.get('from_menu'):
+            return redirect(url_for('menu'))
+        else:
+            return redirect(url_for('index'))
     
     return redirect(url_for('index'))
 
@@ -637,7 +650,10 @@ def bulk_manager_change():
         old_managers = set(item['sample_manager'] for item in items)
         # ここで実際はメール送信処理
         flash(f"管理者を「{new_manager}」に一括変更しました。旧管理者・新管理者・承認者にメールで連絡しました（ダイアログ仮表示）。")
-        return redirect(url_for('index'))
+        if request.form.get('from_menu') or request.args.get('from_menu'):
+            return redirect(url_for('menu'))
+        else:
+            return redirect(url_for('index'))
     return render_template('bulk_manager_change.html', items=items, ids=ids_str)
 
 if __name__ == '__main__':

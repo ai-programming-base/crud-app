@@ -93,6 +93,9 @@
       {% endif %}
     {% endwith %}
     <form method="post">
+        {% if request.args.get('from_menu') %}
+            <input type="hidden" name="from_menu" value="1">
+        {% endif %}
         <table>
             <tr>
                 <th>フィールド名</th>
@@ -113,7 +116,7 @@
         <div class="button-group">
             <button type="submit" name="add">追加</button>
             <button type="submit" name="add_and_next">追加して次を入力</button>
-            <a href="{{ url_for('index') }}" class="cancel">戻る</a>
+            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel">戻る</a>
         </div>
     </form>
 </body>

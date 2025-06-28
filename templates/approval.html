@@ -62,6 +62,9 @@
     {% endif %}
     {% if not finish %}
     <form method="post">
+        {% if request.args.get('from_menu') %}
+            <input type="hidden" name="from_menu" value="1">
+        {% endif %}
         <table>
             <tr>
                 <th><input type="checkbox" onclick="for(let c of document.getElementsByName('selected_ids')) c.checked=this.checked;"></th>
@@ -160,7 +163,7 @@
         <div class="button-group">
             <button type="submit" name="action" value="approve" class="approve" onclick="return onApprove();">承認</button>
             <button type="submit" name="action" value="reject" class="reject" onclick="return onReject();">差し戻し</button>
-            <a href="{{ url_for('index') }}" class="cancel">キャンセル</a>
+            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
         </div>
     </form>
     {% endif %}

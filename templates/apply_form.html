@@ -43,6 +43,9 @@
     {% endif %}
     {% if not finish %}
     <form method="get" onsubmit="return checkAndSubmit();">
+        {% if request.args.get('from_menu') %}
+            <input type="hidden" name="from_menu" value="1">
+        {% endif %}
         <input type="hidden" name="action" value="submit">
         <table>
             <tr>
@@ -101,7 +104,7 @@
         </div>
         <div class="button-group">
             <button type="submit" class="main-btn">申請</button>
-            <a href="{{ url_for('index') }}" class="main-btn" style="background:#aaa;">キャンセル</a>
+            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
         </div>
     </form>
     {% endif %}

@@ -24,9 +24,9 @@
             <a href="{{ url_for('logout') }}" class="logout">ログアウト</a>
         </div>
         <h1>機能メニュー</h1>
-        <a href="{{ url_for('add') }}" class="btn">起票（新規登録）</a>
+        <a href="{{ url_for('add', from_menu=1) }}" class="btn">起票（新規登録）</a>
         <a href="{{ url_for('index') }}" class="btn">一覧表</a>
-        <a href="{{ url_for('approval') }}" class="btn">承認</a>
+        <a href="{{ url_for('approval', from_menu=1) }}" class="btn">承認</a>
     </div>
 </body>
 </html>
