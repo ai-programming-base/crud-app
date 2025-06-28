@@ -180,7 +180,15 @@ def register():
             return redirect(url_for('login'))
     return render_template('register.html', roles=roles)
 
+
+# 追加: 機能選択メニュー画面ルート
 @app.route('/')
+@login_required
+def menu():
+    return render_template('menu.html')
+
+# 一覧表は /list に分離（元のindex関数名はそのままでもOK）
+@app.route('/list')
 @login_required
 def index():
     page = int(request.args.get('page', 1))
