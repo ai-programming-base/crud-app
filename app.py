@@ -139,6 +139,18 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
+def roles_required(*roles):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            user_roles = getattr(g, 'user_roles', [])
+            if not any(role in user_roles for role in roles):
+                flash('権限がありません')
+                return redirect(url_for('index'))
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
 @app.before_request
 def load_logged_in_user():
     user_id = session.get('user_id')
@@ -173,6 +185,8 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin', 'manager')
 def register():
     db = get_db()
     roles = db.execute("SELECT id, name FROM roles").fetchall()
@@ -195,7 +209,7 @@ def register():
             # ユーザー追加
             db.execute(
                 "INSERT INTO users (username, password, email, department, realname) VALUES (?, ?, ?, ?, ?)",
-                (username, password, email, department, realname)
+                (username, generate_password_hash(password), email, department, realname)
             )
             user_id = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()['id']
 
@@ -214,7 +228,7 @@ def register():
 @app.route('/')
 @login_required
 def menu():
-    return render_template('menu.html')
+    return render_template('menu.html', user=g.user, roles=g.user_roles)
 
 @app.route('/list')
 @login_required
