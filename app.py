@@ -39,7 +39,10 @@ def init_user_db():
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                password TEXT NOT NULL
+                password TEXT NOT NULL,
+                email TEXT,
+                department TEXT,
+                realname TEXT
             )
         """)
         db.execute("""
@@ -57,8 +60,21 @@ def init_user_db():
                 PRIMARY KEY(user_id, role_id)
             )
         """)
-        for role in ["manager", "owner", "general"]:
+        # ロール登録
+        for role in ["admin", "manager", "proper", "partner"]:
             db.execute("INSERT OR IGNORE INTO roles (name) VALUES (?)", (role,))
+        # パスワードをハッシュ化してadminユーザー登録
+        hashed = generate_password_hash("adminpass")
+        db.execute("""
+            INSERT OR IGNORE INTO users (username, password, email, department, realname)
+            VALUES (?, ?, ?, ?, ?)
+        """, ("admin", hashed, "admin@example.com", "管理部門", "管理者"))
+        admin_id = db.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()['id']
+        admin_role_id = db.execute("SELECT id FROM roles WHERE name = ?", ("admin",)).fetchone()['id']
+        db.execute("""
+            INSERT OR IGNORE INTO user_roles (user_id, role_id)
+            VALUES (?, ?)
+        """, (admin_id, admin_role_id))
         db.commit()
 
 def init_child_item_db():
@@ -159,28 +175,41 @@ def logout():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     db = get_db()
-    roles = db.execute("SELECT * FROM roles").fetchall()
-    if request.method == 'POST':
-        username = request.form['username'].strip()
-        password = request.form['password']
-        selected_roles = request.form.getlist('roles')
-        if not username or not password or not selected_roles:
-            flash("すべて入力してください")
-        elif db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone():
-            flash("そのユーザー名は既に使われています")
-        else:
-            db.execute(
-                "INSERT INTO users (username, password) VALUES (?, ?)",
-                (username, generate_password_hash(password))
-            )
-            user_id = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()['id']
-            for role_id in selected_roles:
-                db.execute("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", (user_id, role_id))
-            db.commit()
-            flash("登録完了。ログインしてください。")
-            return redirect(url_for('login'))
-    return render_template('register.html', roles=roles)
+    roles = db.execute("SELECT id, name FROM roles").fetchall()
+    error = None
 
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        email = request.form['email']
+        department = request.form['department']
+        realname = request.form['realname']
+        selected_roles = request.form.getlist('roles')
+
+        # 入力バリデーション例
+        if not username or not password or not email:
+            error = 'ユーザー名、パスワード、メールは必須です'
+        elif db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone():
+            error = 'そのユーザー名は既に使われています'
+        else:
+            # ユーザー追加
+            db.execute(
+                "INSERT INTO users (username, password, email, department, realname) VALUES (?, ?, ?, ?, ?)",
+                (username, password, email, department, realname)
+            )
+            user_id = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()['id']
+
+            # ロール追加
+            for role_id in selected_roles:
+                db.execute(
+                    "INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)",
+                    (user_id, role_id)
+                )
+            db.commit()
+            flash('ユーザー登録が完了しました')
+            return redirect(url_for('login'))
+
+    return render_template('register.html', roles=roles)
 
 @app.route('/')
 @login_required
