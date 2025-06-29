@@ -1,13 +1,13 @@
 [
-    {"name": "製品名",    "key": "product_name",  "required": true,  "internal": false, "show_in_index": true},
-    {"name": "製品情報1", "key": "product_info1", "required": true,  "internal": false, "show_in_index": true},
-    {"name": "製品情報2", "key": "product_info2", "required": true,  "internal": false, "show_in_index": true},
-    {"name": "製品情報3", "key": "product_info3", "required": true,  "internal": false, "show_in_index": true},
-    {"name": "製品情報4", "key": "product_info4", "required": true,  "internal": false, "show_in_index": true},
-    {"name": "コメント",  "key": "comment",       "required": false, "internal": false, "show_in_index": true},
-    {"name": "受取日",    "key": "received_date", "required": true,  "internal": false, "show_in_index": true},
-    {"name": "サンプル数","key": "num_of_samples","required": true,  "internal": false, "show_in_index": true},
-    {"name": "管理者",    "key": "sample_manager","required": false, "internal": true,  "show_in_index": true},
-    {"name": "保管場所",  "key": "storage",       "required": false, "internal": true,  "show_in_index": true},
-    {"name": "状態",      "key": "status",        "required": false, "internal": true,  "show_in_index": true}
+    {"name": "製品名",    "key": "product_name",  "type":"text", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報1", "key": "product_info1", "type":"text", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報2", "key": "product_info2", "type":"text", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報3", "key": "product_info3", "type":"text", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "製品情報4", "key": "product_info4", "type":"text", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "コメント",  "key": "comment",       "type":"text", "required": false, "internal": false, "show_in_index": true},
+    {"name": "受取日",    "key": "received_date", "type":"date", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "サンプル数","key": "num_of_samples","type":"int", "required": true,  "internal": false, "show_in_index": true},
+    {"name": "管理者",    "key": "sample_manager","type":"text", "required": false, "internal": true,  "show_in_index": true},
+    {"name": "保管場所",  "key": "storage",       "type":"text", "required": false, "internal": true,  "show_in_index": true},
+    {"name": "状態",      "key": "status",        "type":"text", "required": false, "internal": true,  "show_in_index": true}
 ]
