@@ -203,6 +203,13 @@
             window.location.href = "/change_owner?ids=" + encodeURIComponent(ids);
         }
 
+    function submitDisposeTransferRequest() {
+        var form = document.getElementById('main-form');
+        form.action = "{{ url_for('dispose_transfer_request') }}";
+        form.method = "POST";
+        form.submit();
+    }
+
     </script>
 </head>
 <body>
@@ -242,6 +249,7 @@
                 {% for f in fields %}
                 <th>{{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}</th>
                 {% endfor %}
+                <th>サンプル数</th>
             </tr>
             <tr id="filter-row" class="filter-row">
                 <td class="col-checkbox filter-cell"></td>
@@ -269,6 +277,7 @@
                     <input type="hidden" name="{{f.key}}_{{item['id']}}" value="{{ item[f.key] }}">
                 </td>
                 {% endfor %}
+                <td>{{ item['sample_count'] }}</td>
             </tr>
             {% endfor %}
         </table>
@@ -286,6 +295,7 @@
             <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
             <button type="button" class="main-btn" onclick="submitReturnRequest()">持ち出し終了申請</button>
             <button type="button" class="main-btn" onclick="changeOwners()">所有者を変更</button>
+            <button type="button" class="main-btn" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
             <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
             <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
             <button type="button" class="main-btn" onclick="showChildItems()">選択したアイテムの小アイテムを表示</button>

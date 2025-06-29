@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>破棄・譲渡申請</title>
+    <style>
+        table { border-collapse: collapse; width: 98%; }
+        th, td { border: 1px solid #aaa; padding: 6px 12px; }
+        th { background: #eee; }
+        .form-field { margin-bottom: 12px; }
+        .button-group { margin-top: 18px; }
+        .main-btn {
+            background: #4285f4;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: bold;
+            padding: 6px 16px;
+            margin-right: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background .15s;
+        }
+        .main-btn:hover { background: #23468e; color: #fff; }
+        .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+    </style>
+    <script>
+        function checkAndSubmit() {
+            {% for item in items %}
+            if (!document.querySelector('input[name="qty_checked_{{ item["id"] }}"]:checked')) {
+                alert("ID:{{ item['id'] }} の数量チェックにチェックしてください");
+                return false;
+            }
+            {% endfor %}
+            if (!document.querySelector('input[name="dispose_type"]:checked')) {
+                alert("破棄か譲渡の種別を選択してください");
+                return false;
+            }
+            alert("申請が完了しました（本来はメール送信）");
+            return true;
+        }
+    </script>
+</head>
+<body>
+    <div style="width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;">
+        <div style="margin-top:18px; margin-bottom:2px;">
+            <span style="font-weight:bold; color:#3161c4; margin-right:12px;">
+                {{ g.user['username'] }} さん
+            </span>
+            <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
+        </div>
+    </div>
+    <h1>破棄・譲渡申請</h1>
+    {% if message %}
+      <div class="info-message">{{ message }}</div>
+    {% endif %}
+    {% if not finish %}
+    <form method="post" onsubmit="return checkAndSubmit();">
+        {% if request.args.get('from_menu') %}
+            <input type="hidden" name="from_menu" value="1">
+        {% endif %}
+        <input type="hidden" name="action" value="submit">
+        {% for item in items %}
+            <input type="hidden" name="item_id" value="{{ item['id'] }}">
+        {% endfor %}
+        <div class="form-field">
+            <label><b>申請種別：</b></label>
+            <label>
+                <input type="radio" name="dispose_type" value="破棄">破棄
+            </label>
+            <label>
+                <input type="radio" name="dispose_type" value="譲渡">譲渡
+            </label>
+        </div>
+        {% for item in items %}
+        <div style="margin-bottom:28px;">
+            <h3>【親ID: {{ item['id'] }}】 {{ item['product_name'] }}</h3>
+            <table>
+                <tr>
+                    <th>枝番</th>
+                    <th>所有者</th>
+                    <th>状態</th>
+                    <th>持ち出し開始日</th>
+                    <th>持ち出し終了日</th>
+                    <th>備考</th>
+                    <th>申請対象</th>
+                </tr>
+                {% for ci in child_items if ci['item_id'] == item['id'] %}
+                <tr>
+                    <td>{{ ci['branch_no'] }}</td>
+                    <td>{{ ci['owner'] }}</td>
+                    <td>{{ ci['status'] }}</td>
+                    <td>{{ ci['checkout_start_date'] }}</td>
+                    <td>{{ ci['checkout_end_date'] }}</td>
+                    <td>{{ ci['comment'] }}</td>
+                    <td>
+                        <input type="checkbox" name="target_child_ids" value="{{ ci['id'] }}">
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            <div style="margin:12px 0;">
+                <label>
+                  <input type="checkbox" name="qty_checked_{{ item['id'] }}">
+                  [ID:{{ item['id'] }}] の数量チェック
+                </label>
+            </div>
+        </div>
+        {% endfor %}
+        <div class="form-field">
+            <label for="handler">対応者</label>
+            <input class="form-input" type="text" id="handler" name="handler" value="{{ g.user['username'] }}">
+        </div>
+        <div class="form-field">
+            <label for="dispose_comment">破棄・譲渡コメント</label>
+            <textarea class="form-input" id="dispose_comment" name="dispose_comment"></textarea>
+        </div>
+        <div class="form-field">
+            <label for="comment">申請コメント</label>
+            <textarea class="form-input" id="comment" name="comment"></textarea>
+        </div>
+        <div class="form-field">
+            <label for="approver">承認者</label>
+            <input class="form-input" type="text" id="approver" name="approver" value="">
+        </div>
+        <div class="button-group">
+            <button type="submit" class="main-btn">申請</button>
+            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
+        </div>
+    </form>
+    {% endif %}
+    {% if finish %}
+    <h2>申請内容</h2>
+    <!-- ここは適宜実装（省略可） -->
+    <div class="button-group" style="margin-top: 20px;">
+        <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+    </div>
+    {% endif %}
+</body>
+</html>

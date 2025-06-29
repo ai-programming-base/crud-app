@@ -90,6 +90,8 @@
                         入庫持ち出し申請
                     {% elif item.parsed_values.status == "入庫申請中" %}
                         入庫申請
+                    {% elif item.parsed_values.status == "破棄・譲渡申請中" %}
+                        破棄・譲渡申請
                     {% else %}
                         {{ item['application_content']|default(item.parsed_values.status|default('')) }}
                     {% endif %}
@@ -138,6 +140,41 @@
                                 <th>コメント</th>
                                 <td>{{ item.parsed_values.comment|default('') }}</td>
                             </tr>
+
+                        {% elif item.parsed_values.status in ["破棄・譲渡申請中", "破棄", "譲渡"] %}
+                            <tr>
+                                <th>種別</th>
+                                <td>{{ item.parsed_values.dispose_type }}</td>
+                            </tr>
+                            <tr>
+                                <th>対象枝番</th>
+                                <td>
+                                {% if item.parsed_values.target_child_branches %}
+                                    <ul>
+                                    {% for child in item.parsed_values.target_child_branches %}
+                                    <li>
+                                        {% if child.branch_no is defined %}
+                                        枝番: {{ child.branch_no }}（子ID: {{ child.id }}）
+                                        {% else %}
+                                        子ID: {{ child.id }}
+                                        {% endif %}
+                                    </li>
+                                    {% endfor %}
+                                    </ul>
+                                {% else %}
+                                    （なし）
+                                {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <th>対応者</th>
+                                <td>{{ item.parsed_values.handler }}</td>
+                            </tr>
+                            <tr>
+                                <th>破棄・譲渡コメント</th>
+                                <td>{{ item.parsed_values.dispose_comment }}</td>
+                            </tr>
+                            
                         {% else %}
                             <tr>
                                 <th>管理者</th>

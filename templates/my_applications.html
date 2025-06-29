@@ -45,6 +45,8 @@
                   入庫申請
                 {% elif vals.status == '返却申請中' %}
                   持ち出し終了申請
+                {% elif vals.status == '破棄・譲渡申請中' %}
+                    破棄・譲渡申請
                 {% else %}
                   {{ vals.status or '' }}
                 {% endif %}

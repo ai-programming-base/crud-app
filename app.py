@@ -72,6 +72,7 @@ def init_child_item_db():
                 status TEXT NOT NULL,
                 checkout_start_date TEXT,
                 checkout_end_date TEXT,
+                comment TEXT,
                 UNIQUE(item_id, branch_no)
             )
         ''')
@@ -209,10 +210,31 @@ def index():
         f"SELECT * FROM item {where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
         params + [per_page, offset]
     ).fetchall()
+
+    item_list = []
+    for item in items:
+        item = dict(item)
+        item_id = item['id']
+        # まず子アイテム全体の件数を取得
+        child_total = db.execute(
+            "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+        ).fetchone()[0]
+        if child_total == 0:
+            # 子アイテムがなければitemテーブルのnum_of_samplesを表示
+            item['sample_count'] = item.get('num_of_samples', 0)
+        else:
+            # 子アイテムがあれば、「破棄・譲渡以外」の件数
+            cnt = db.execute(
+                "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                (item_id, "破棄", "譲渡")
+            ).fetchone()[0]
+            item['sample_count'] = cnt
+        item_list.append(item)
+
     page_count = max(1, (total + per_page - 1) // per_page)
     return render_template(
         'index.html',
-        items=items, page=page, page_count=page_count,
+        items=item_list, page=page, page_count=page_count,
         filters=filters, total=total, fields=INDEX_FIELDS
     )
 
@@ -507,6 +529,7 @@ def approval():
             item_id = app_row['item_id']
             new_values = json.loads(app_row['new_values'])
 
+            status = new_values.get('status')
             if action == 'approve':
                 # itemテーブルのカラムのみでUPDATE
                 item_columns = set(FIELD_KEYS)  # fields.jsonのkeyのみ
@@ -519,7 +542,6 @@ def approval():
                         params + [item_id]
                     )
 
-                status = new_values.get('status')
                 # 持ち出し同時申請の場合
                 if status == "入庫持ち出し申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
@@ -550,16 +572,30 @@ def approval():
                     db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
                 # 返却申請の場合
                 elif status == "返却申請中":
-                    # item.status = "入庫"、storage・返却日など反映
                     db.execute(
                         "UPDATE item SET status=?, storage=? WHERE id=?",
                         ("入庫", new_values.get("storage", ""), item_id)
                     )
-                    # child_item（該当item_id全部）を「返却済」状態＋返却日反映
                     db.execute(
                         "UPDATE child_item SET status=?, checkout_end_date=? WHERE item_id=?",
                         ("返却済", new_values.get("return_date", ""), item_id)
                     )
+                # 破棄・譲渡申請の場合
+                elif status == "破棄・譲渡申請中":
+                    dispose_type = new_values.get('dispose_type')   # ←ここが必要
+                    target_child_branches = new_values.get('target_child_branches', [])
+                    dispose_comment = new_values.get('dispose_comment', '')
+
+                    # ここでdispose_typeに応じて子アイテムのstatusを変更
+                    new_status = "破棄" if dispose_type == "破棄" else "譲渡"
+                    for target in target_child_branches:
+                        cid = target["id"]
+                        db.execute(
+                            "UPDATE child_item SET status=?, comment=? WHERE id=?",
+                            (new_status, dispose_comment, cid)
+                        )
+                    # item.statusは承認時に「持ち出し中」へ戻す
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
                 # item_applicationのstatusを承認に
                 db.execute('''
@@ -575,11 +611,12 @@ def approval():
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     item_id, app_row['applicant'],
-                    # 履歴の内容は申請種別に応じて
-                    "入庫申請" if status == "入庫申請中"
+                    "破棄申請" if status == "破棄・譲渡申請中" and dispose_type == "破棄"
+                    else "譲渡申請" if status == "破棄・譲渡申請中" and dispose_type == "譲渡"
+                    else "入庫申請" if status == "入庫申請中"
                     else "入庫持ち出し申請" if status == "入庫持ち出し申請中"
                     else "持ち出し終了申請" if status == "返却申請中"
-                    else (app_row['application_content'] or status or ""),
+                    else (app_row['new_values'] or status or ""),
                     app_row['applicant_comment'], app_row['application_datetime'], app_row['approver'],
                     "承認", now_str, comment
                 ))
@@ -593,7 +630,7 @@ def approval():
                     ''',
                     (comment, now_str, "差し戻し", app_id)
                 )
-                # application_historyへの差し戻し履歴追加（必要なら）
+                # 必要に応じて履歴登録など
 
         db.commit()
         # 完了後は空リスト＋メッセージ表示
@@ -745,6 +782,113 @@ def change_owner():
         flash("所有者を変更しました。管理者・責任者・自分にメール送信しました（仮実装）。")
     else:
         flash("変更はありませんでした。")
+    return redirect(url_for('index'))
+
+@app.route('/dispose_transfer_request', methods=['GET', 'POST'])
+@login_required
+def dispose_transfer_request():
+    db = get_db()
+    # POST: 申請フォーム送信
+    if request.method == 'POST' and request.form.get('action') == 'submit':
+        item_ids = request.form.getlist('item_id')
+        dispose_type = request.form.get('dispose_type', '')
+        handler = request.form.get('handler', '').strip()
+        dispose_comment = request.form.get('dispose_comment', '').strip()
+        applicant_comment = request.form.get('comment', '').strip()
+        approver = request.form.get('approver', '').strip()
+        target_child_ids = request.form.getlist('target_child_ids')
+        qty_checked_ids = []
+        for item_id in item_ids:
+            if request.form.get(f'qty_checked_{item_id}'):
+                qty_checked_ids.append(item_id)
+        errors = []
+
+        if not item_ids:
+            errors.append("申請対象アイテムがありません。")
+        if not dispose_type:
+            errors.append("破棄か譲渡の種別を選択してください。")
+        if not handler:
+            errors.append("対応者を入力してください。")
+        if not approver:
+            errors.append("承認者を入力してください。")
+        if not target_child_ids:
+            errors.append("少なくとも1つの子アイテムを選択してください。")
+        if len(qty_checked_ids) != len(item_ids):
+            errors.append("すべての親アイテムで数量チェックをしてください。")
+
+        if errors:
+            items = db.execute(
+                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+            ).fetchall()
+            child_items = db.execute(
+                f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
+                item_ids
+            ).fetchall()
+            for msg in errors:
+                flash(msg)
+            return render_template(
+                'dispose_transfer_form.html',
+                items=items,
+                child_items=child_items
+            )
+
+        applicant = g.user['username']
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # itemごとに申請・item_application＋item.status変更
+
+        for item_id in item_ids:
+            # このitem_idに紐づく申請対象子アイテム(branch_no付き)
+            target_child_branches_this = []
+            for cid in target_child_ids:
+                row = db.execute("SELECT item_id, branch_no FROM child_item WHERE id=?", (cid,)).fetchone()
+                if row and row['item_id'] == int(item_id):
+                    target_child_branches_this.append({"id": cid, "branch_no": row['branch_no']})
+
+            # 【ここを修正】statusは常に「破棄・譲渡申請中」とする
+            new_values = {
+                "item_id": item_id,
+                "dispose_type": dispose_type,  # "破棄"または"譲渡"
+                "handler": handler,
+                "dispose_comment": dispose_comment,
+                "target_child_branches": target_child_branches_this,
+                "status": "破棄・譲渡申請中"
+            }
+            db.execute('''
+                INSERT INTO item_application
+                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                item_id, json.dumps(new_values, ensure_ascii=False), applicant,
+                applicant_comment, approver, "申請中", now_str
+            ))
+            db.execute("UPDATE item SET status=? WHERE id=?", ("破棄・譲渡申請中", item_id))
+        db.commit()
+
+        flash("破棄・譲渡申請を保存しました。承認待ちです。")
+        if request.form.get('from_menu'):
+            return redirect(url_for('menu'))
+        else:
+            return redirect(url_for('index'))
+
+    # 申請画面表示（POST/GET共通: item_idリストで遷移）
+    if request.method == 'POST':
+        item_ids = request.form.getlist('selected_ids')
+        if not item_ids:
+            flash("申請対象を選択してください")
+            return redirect(url_for('index'))
+        items = db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        ).fetchall()
+        child_items = db.execute(
+            f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
+            item_ids
+        ).fetchall()
+        return render_template(
+            'dispose_transfer_form.html',
+            items=items,
+            child_items=child_items
+        )
+
     return redirect(url_for('index'))
 
 

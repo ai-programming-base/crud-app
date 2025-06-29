@@ -19,6 +19,7 @@
             <th>持ち出し開始日</th>
             <th>持ち出し終了日</th>
             <th>状態</th>
+            <th>コメント</th>
         </tr>
         {% for ci in child_items %}
         <tr>
@@ -29,6 +30,7 @@
             <td>{{ ci['checkout_start_date'] }}</td>
             <td>{{ ci['checkout_end_date'] }}</td>
             <td>{{ ci['status'] }}</td>
+            <td>{{ ci['comment'] }}</td>
         </tr>
         {% endfor %}
     </table>
