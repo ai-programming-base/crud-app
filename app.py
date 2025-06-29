@@ -174,7 +174,7 @@ def login():
         user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
-            return redirect(url_for('index'))
+            return redirect(url_for('menu'))
         else:
             flash("ユーザー名またはパスワードが違います")
     return render_template('login.html')
@@ -228,7 +228,7 @@ def register():
 @app.route('/')
 @login_required
 def menu():
-    return render_template('menu.html', user=g.user, roles=g.user_roles)
+    return render_template('menu.html')
 
 @app.route('/list')
 @login_required
@@ -283,6 +283,7 @@ def index():
 
 @app.route('/add', methods=['GET', 'POST'])
 @login_required
+@roles_required('admin', 'manager', 'proper', 'partner')
 def add():
     if request.method == 'POST':
         user_values = [request.form.get(f['key'], '').strip() for f in USER_FIELDS]
@@ -323,6 +324,7 @@ def add():
 
 @app.route('/delete_selected', methods=['POST'])
 @login_required
+@roles_required('admin', 'manager')
 def delete_selected():
     ids = request.form.getlist('selected_ids')
     if ids:
@@ -357,6 +359,7 @@ def update_items():
 
 @app.route('/apply_request', methods=['POST', 'GET'])
 @login_required
+@roles_required('admin', 'manager', 'proper')
 def apply_request():
     db = get_db()
 
@@ -456,6 +459,7 @@ def apply_request():
 
 @app.route('/return_request', methods=['POST', 'GET'])
 @login_required
+@roles_required('admin', 'manager', 'proper')
 def return_request():
     db = get_db()
     # 申請フォーム表示（POST:選択済みID受取→フォーム表示）
@@ -523,6 +527,7 @@ def return_request():
 
 @app.route('/approval', methods=['GET', 'POST'])
 @login_required
+@roles_required('admin', 'manager')
 def approval():
     db = get_db()
     username = g.user['username']
@@ -684,6 +689,7 @@ def approval():
 
 @app.route('/child_items')
 @login_required
+@roles_required('admin', 'manager', 'proper', 'partner')
 def child_items_multiple():
     ids_str = request.args.get('ids', '')
     if not ids_str:
@@ -708,6 +714,7 @@ def child_items_multiple():
 
 @app.route('/bulk_manager_change', methods=['GET', 'POST'])
 @login_required
+@roles_required('admin', 'manager', 'proper', 'partner')
 def bulk_manager_change():
     ids_str = request.args.get('ids') if request.method == 'GET' else request.form.get('ids')
     if not ids_str:
@@ -769,6 +776,7 @@ def loadjson_filter(s):
     
 @app.route('/change_owner', methods=['GET', 'POST'])
 @login_required
+@roles_required('admin', 'manager', 'proper', 'partner')
 def change_owner():
     db = get_db()
     ids_str = request.args.get('ids') if request.method == 'GET' else request.form.get('ids')
@@ -829,6 +837,7 @@ def change_owner():
 
 @app.route('/dispose_transfer_request', methods=['GET', 'POST'])
 @login_required
+@roles_required('admin', 'manager', 'proper')
 def dispose_transfer_request():
     db = get_db()
     # POST: 申請フォーム送信

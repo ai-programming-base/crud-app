@@ -48,10 +48,8 @@
             // Excelライク編集: Tab/Shift+Tabで左右、Enter/Shift+Enterで上下に移動
             const table = document.querySelector('form#main-form table');
             const rows = Array.from(table.querySelectorAll('tr'));
-            // データ行は3行目以降（0:thead, 1:filter, 2~:data）
             const dataRowStart = rows.findIndex(r => r.querySelector('td[data-editable="true"]'));
             const dataRows = rows.slice(dataRowStart);
-            // 2次元: cellMatrix[row][col]
             const cellMatrix = dataRows.map(row =>
                 Array.from(row.querySelectorAll('td[data-editable="true"]'))
             );
@@ -65,7 +63,6 @@
                     td.contentEditable = true;
                     td.focus();
 
-                    // 現在の位置（行・列）を取得
                     let pos = null;
                     outer: for (let i = 0; i < cellMatrix.length; i++) {
                         for (let j = 0; j < cellMatrix[i].length; j++) {
@@ -117,7 +114,6 @@
                 });
             });
 
-            // フィルタ切替
             document.getElementById('toggle-filter').addEventListener('click', function () {
                 var row = document.getElementById('filter-row');
                 if (row.style.display === 'none') {
@@ -129,7 +125,6 @@
                 }
             });
 
-            // フィルタセルのエディット
             document.querySelectorAll('td[data-filter-editable="true"]').forEach(function(td) {
                 let input = td.querySelector('input');
                 td.addEventListener('click', function(e) { input.focus(); });
@@ -141,7 +136,6 @@
                 });
             });
 
-            // フィルタの初期状態
             var row = document.getElementById('filter-row');
             var hasFilter = {{ (filters.values()|join('')|length > 0)|tojson }};
             if (!hasFilter) {
@@ -203,12 +197,12 @@
             window.location.href = "/change_owner?ids=" + encodeURIComponent(ids);
         }
 
-    function submitDisposeTransferRequest() {
-        var form = document.getElementById('main-form');
-        form.action = "{{ url_for('dispose_transfer_request') }}";
-        form.method = "POST";
-        form.submit();
-    }
+        function submitDisposeTransferRequest() {
+            var form = document.getElementById('main-form');
+            form.action = "{{ url_for('dispose_transfer_request') }}";
+            form.method = "POST";
+            form.submit();
+        }
 
     </script>
 </head>
@@ -221,10 +215,7 @@
             <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
         </div>
     </div>
-    <h1>Item List</h1>
-    <div style="margin-bottom:14px;">
-        <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
-    </div>
+    <h1>アイテムリスト</h1>
     {% with messages = get_flashed_messages() %}
     {% if messages %}
       <div class="error-message">
@@ -291,14 +282,33 @@
           {% endfor %}
         </div>
         <div class="button-group" style="margin-top:4px;">
-            <a href="{{ url_for('add') }}" class="main-btn">起票</a>
-            <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
-            <button type="button" class="main-btn" onclick="submitReturnRequest()">持ち出し終了申請</button>
-            <button type="button" class="main-btn" onclick="changeOwners()">所有者を変更</button>
-            <button type="button" class="main-btn" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
-            <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
-            <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
-            <button type="button" class="main-btn" onclick="showChildItems()">選択したアイテムの小アイテムを表示</button>
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+                <a href="{{ url_for('add') }}" class="main-btn">起票</a>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="submitReturnRequest()">持ち出し終了申請</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="changeOwners()">所有者を変更</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="showChildItems()">選択したアイテムの小アイテムを表示</button>
+            {% endif %}
+        </div>
+        <div style="margin: 18px 0 0 0;">
+            <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
         </div>
     </form>
 </body>
