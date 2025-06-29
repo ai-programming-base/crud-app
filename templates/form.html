@@ -8,8 +8,29 @@
         th { background: #eee; text-align: left; }
         td.editing { background: #d0e3f7; }
         .button-group { margin-top: 12px; }
-        .button-group button, .button-group a { margin-right: 8px; padding: 6px 16px; border-radius: 4px; border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
-        .button-group a.cancel { background: #aaa; }
+
+        /* 統一ボタンスタイル */
+        .main-btn, .cancel-btn {
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: bold;
+            padding: 6px 16px;
+            margin-right: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background .15s;
+        }
+        .main-btn {
+            background: #4285f4;
+            color: #fff;
+        }
+        .main-btn:hover { background: #23468e; color: #fff; }
+        .cancel-btn {
+            background: #aaa;
+            color: #fff;
+        }
+        .cancel-btn:hover { background: #888; color: #fff; }
         .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
         .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
     </style>
@@ -79,7 +100,7 @@
             <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
         </div>
     </div>
-    <h1>Add Item</h1>
+    <h1>起票（新規登録）</h1>
     {% if message %}
       <div class="info-message">{{ message }}</div>
     {% endif %}
@@ -114,9 +135,9 @@
             {% endfor %}
         </table>
         <div class="button-group">
-            <button type="submit" name="add">追加</button>
-            <button type="submit" name="add_and_next">追加して次を入力</button>
-            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel">戻る</a>
+            <button type="submit" name="add" class="main-btn">追加</button>
+            <button type="submit" name="add_and_next" class="main-btn">追加して次を入力</button>
+            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">戻る</a>
         </div>
     </form>
 </body>

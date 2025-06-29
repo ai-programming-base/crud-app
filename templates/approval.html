@@ -9,11 +9,17 @@
         .button-group { margin-top: 15px; }
         .button-group button, .button-group a {
             margin-right: 8px; padding: 6px 16px; border-radius: 4px;
-            border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer;
+            border: none; cursor: pointer; text-decoration: none;
+            font-size: 1rem; font-weight: bold;
         }
-        .button-group button.approve { background: #43a047; }
-        .button-group button.reject { background: #db4437; }
-        .button-group a.cancel { background: #aaa; }
+        .button-group button.approve { background: #4285f4; color: #fff; }
+        .button-group button.reject { background: #db4437; color: #fff; }
+        .button-group a.cancel, .button-group a.main-btn {
+            background: #aaa; color: #fff; padding: 6px 16px; text-decoration: none;
+        }
+        .button-group button:hover, .button-group a:hover {
+            opacity: 0.8;
+        }
         .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
         .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
         .comment-box { width: 98%; padding: 6px; margin-top: 10px; font-size: 15px; border-radius: 4px; border: 1px solid #aaa; }
@@ -31,6 +37,7 @@
             if (!confirm("承認しますか？")) return false;
             return true;
         }
+
         function onReject() {
             var checked = document.querySelectorAll('input[name="selected_ids"]:checked').length;
             if (checked === 0) {
@@ -140,7 +147,6 @@
                                 <th>コメント</th>
                                 <td>{{ item.parsed_values.comment|default('') }}</td>
                             </tr>
-
                         {% elif item.parsed_values.status in ["破棄・譲渡申請中", "破棄", "譲渡"] %}
                             <tr>
                                 <th>種別</th>
@@ -174,7 +180,6 @@
                                 <th>破棄・譲渡コメント</th>
                                 <td>{{ item.parsed_values.dispose_comment }}</td>
                             </tr>
-                            
                         {% else %}
                             <tr>
                                 <th>管理者</th>

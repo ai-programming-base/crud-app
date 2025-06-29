@@ -283,7 +283,7 @@
         </div>
         <div class="button-group" style="margin-top:4px;">
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-                <a href="{{ url_for('add') }}" class="main-btn">起票</a>
+                <a href="{{ url_for('add') }}" class="main-btn">起票（新規登録）</a>
             {% endif %}
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
                 <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>

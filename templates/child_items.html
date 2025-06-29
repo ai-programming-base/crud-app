@@ -3,9 +3,32 @@
 <head>
     <title>小アイテム一覧</title>
     <style>
-        table { border-collapse: collapse; }
+        table { border-collapse: collapse; width: 98%; }
         th, td { border: 1px solid #aaa; padding: 6px 12px; }
         th { background: #eee; }
+        
+        /* 統一ボタンスタイル */
+        .main-btn, .cancel-btn {
+            border: none;
+            border-radius: 4px;
+            font-size: 1rem;
+            font-weight: bold;
+            padding: 6px 16px;
+            margin-right: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background .15s;
+        }
+        .main-btn {
+            background: #4285f4;
+            color: #fff;
+        }
+        .main-btn:hover { background: #23468e; color: #fff; }
+        .cancel-btn {
+            background: #aaa;
+            color: #fff;
+        }
+        .cancel-btn:hover { background: #888; color: #fff; }
     </style>
 </head>
 <body>
@@ -35,7 +58,7 @@
         {% endfor %}
     </table>
     <div style="margin-top:20px;">
-      <a href="{% if request.args.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}">一覧に戻る</a>
+      <a href="{% if request.args.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">一覧に戻る</a>
     </div>
 </body>
 </html>
