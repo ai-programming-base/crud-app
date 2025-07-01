@@ -477,8 +477,24 @@ def return_request():
             flash(f"持ち出し中でないアイテム（ID: {', '.join(not_accepted)}）は持ち出し終了申請できません。")
             return redirect(url_for('index'))
 
-        items = [dict(row) for row in items]
-        return render_template('return_form.html', items=items, fields=INDEX_FIELDS)
+        item_list = []
+        for item in items:
+            item = dict(item)
+            item_id = item['id']
+            child_total = db.execute(
+                "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+            ).fetchone()[0]
+            if child_total == 0:
+                item['sample_count'] = item.get('num_of_samples', 0)
+            else:
+                cnt = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                    (item_id, "破棄", "譲渡")
+                ).fetchone()[0]
+                item['sample_count'] = cnt
+            item_list.append(item)
+
+        return render_template('return_form.html', items=item_list, fields=INDEX_FIELDS)
     
     # 申請フォームからの送信時（GET, action=submit）: item_applicationへ申請内容登録
     if request.args.get('action') == 'submit':
@@ -497,10 +513,7 @@ def return_request():
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for id in item_ids:
-            # itemのstatusのみ即時「返却申請中」に変更
             db.execute("UPDATE item SET status=? WHERE id=?", ("返却申請中", id))
-
-            # item内容取得＋申請内容(new_values)用意
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
             new_values = dict(item)
             new_values['return_date'] = return_date
@@ -870,9 +883,26 @@ def dispose_transfer_request():
             errors.append("すべての親アイテムで数量チェックをしてください。")
 
         if errors:
+            # item/child_items両方にサンプル数計算を追加
             items = db.execute(
                 f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
             ).fetchall()
+            item_list = []
+            for item in items:
+                item = dict(item)
+                item_id = item['id']
+                child_total = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+                ).fetchone()[0]
+                if child_total == 0:
+                    item['sample_count'] = item.get('num_of_samples', 0)
+                else:
+                    cnt = db.execute(
+                        "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                        (item_id, "破棄", "譲渡")
+                    ).fetchone()[0]
+                    item['sample_count'] = cnt
+                item_list.append(item)
             child_items = db.execute(
                 f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
                 item_ids
@@ -881,7 +911,7 @@ def dispose_transfer_request():
                 flash(msg)
             return render_template(
                 'dispose_transfer_form.html',
-                items=items,
+                items=item_list,
                 child_items=child_items,
                 fields=INDEX_FIELDS
             )
@@ -890,12 +920,23 @@ def dispose_transfer_request():
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         for item_id in item_ids:
-            # 親ID（item）の全情報を取得
+            # 親ID（item）の全情報を取得＋サンプル数も埋め込む
             item = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
-            new_values = dict(item)  # ←ここでitem情報すべてを格納
+            item_dict = dict(item)
+            child_total = db.execute(
+                "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+            ).fetchone()[0]
+            if child_total == 0:
+                item_dict['sample_count'] = item_dict.get('num_of_samples', 0)
+            else:
+                cnt = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                    (item_id, "破棄", "譲渡")
+                ).fetchone()[0]
+                item_dict['sample_count'] = cnt
 
-            # 必要な追加情報を上書き・追加
-            new_values['dispose_type'] = dispose_type  # "破棄"または"譲渡"
+            new_values = dict(item_dict)
+            new_values['dispose_type'] = dispose_type
             new_values['handler'] = handler
             new_values['dispose_comment'] = dispose_comment
 
@@ -935,13 +976,31 @@ def dispose_transfer_request():
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
+        # サンプル数計算
+        item_list = []
+        for item in items:
+            item = dict(item)
+            item_id = item['id']
+            child_total = db.execute(
+                "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+            ).fetchone()[0]
+            if child_total == 0:
+                item['sample_count'] = item.get('num_of_samples', 0)
+            else:
+                cnt = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                    (item_id, "破棄", "譲渡")
+                ).fetchone()[0]
+                item['sample_count'] = cnt
+            item_list.append(item)
+
         child_items = db.execute(
             f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
             item_ids
         ).fetchall()
         return render_template(
             'dispose_transfer_form.html',
-            items=items,
+            items=item_list,
             child_items=child_items,
             fields=INDEX_FIELDS
         )

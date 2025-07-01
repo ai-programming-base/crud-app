@@ -53,6 +53,7 @@
                 {% for f in fields %}
                 <th>{{ f.name }}</th>
                 {% endfor %}
+                <th>サンプル数</th>
                 <th>数量チェック</th>
             </tr>
             {% for item in items %}
@@ -64,6 +65,7 @@
                 {% for f in fields %}
                 <td>{{ item[f.key] }}</td>
                 {% endfor %}
+                <td>{{ item['num_of_samples'] }}</td>
                 <td><input type="checkbox" name="qty_checked"></td>
             </tr>
             {% endfor %}
