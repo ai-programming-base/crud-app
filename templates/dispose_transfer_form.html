@@ -4,9 +4,8 @@
     <title>破棄・譲渡申請</title>
     <style>
         table { border-collapse: collapse; width: 98%; }
-        th, td { border: 1px solid #aaa; padding: 6px 12px; }
+        th, td { border: 1px solid #aaa; padding: 5px 10px; }
         th { background: #eee; }
-        .form-field { margin-bottom: 12px; }
         .button-group { margin-top: 18px; }
         .main-btn {
             background: #4285f4;
@@ -22,7 +21,12 @@
             transition: background .15s;
         }
         .main-btn:hover { background: #23468e; color: #fff; }
+        .form-field { margin-bottom: 12px; }
+        .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
+        .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+        .form-textarea { height: 56px; resize: vertical; }
         .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+        .parent-table th, .parent-table td { font-size: 0.97em; }
     </style>
     <script>
         function checkAndSubmit() {
@@ -38,6 +42,10 @@
             }
             alert("申請が完了しました（本来はメール送信）");
             return true;
+        }
+        function toggleSelectAll(parentId, checked) {
+            var boxes = document.querySelectorAll('.child-checkbox-' + parentId);
+            boxes.forEach(function(b) { b.checked = checked; });
         }
     </script>
 </head>
@@ -60,67 +68,88 @@
             <input type="hidden" name="from_menu" value="1">
         {% endif %}
         <input type="hidden" name="action" value="submit">
-        {% for item in items %}
-            <input type="hidden" name="item_id" value="{{ item['id'] }}">
-        {% endfor %}
+
+        <!-- 親アイテム（親ID）の一覧表：fieldsすべてを出力 -->
+        <table class="parent-table" style="margin-bottom:24px;">
+            <tr>
+                <th>ID</th>
+                {% for f in fields %}
+                <th>{{ f.name }}</th>
+                {% endfor %}
+                <th>数量チェック</th>
+            </tr>
+            {% for item in items %}
+            <tr>
+                <td>
+                    {{ item['id'] }}
+                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
+                </td>
+                {% for f in fields %}
+                <td>{{ item[f.key] }}</td>
+                {% endfor %}
+                <td>
+                    <input type="checkbox" name="qty_checked_{{ item['id'] }}">
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
         <div class="form-field">
-            <label><b>申請種別：</b></label>
+            <label class="form-label"><b>申請種別：</b></label>
             <label>
-                <input type="radio" name="dispose_type" value="破棄">破棄
+                <input type="radio" name="dispose_type" value="破棄" checked>破棄
             </label>
             <label>
                 <input type="radio" name="dispose_type" value="譲渡">譲渡
             </label>
         </div>
+
         {% for item in items %}
-        <div style="margin-bottom:28px;">
-            <h3>【親ID: {{ item['id'] }}】 {{ item['product_name'] }}</h3>
+        <div style="margin-bottom:32px;">
+            <h3>【ID: {{ item['id'] }}】</h3>
             <table>
                 <tr>
+                    <th style="width:70px; text-align:center;">
+                        <input type="checkbox" onclick="toggleSelectAll('{{ item['id'] }}', this.checked);">
+                    </th>
                     <th>枝番</th>
                     <th>所有者</th>
                     <th>状態</th>
                     <th>持ち出し開始日</th>
                     <th>持ち出し終了日</th>
                     <th>備考</th>
-                    <th>申請対象</th>
                 </tr>
-                {% for ci in child_items if ci['item_id'] == item['id'] %}
+                {% for ci in child_items if ci['item_id'] == item['id'] and ci['status'] not in ['破棄', '譲渡'] %}
                 <tr>
+                    <td style="text-align:center;">
+                        <input type="checkbox" name="target_child_ids" value="{{ ci['id'] }}" class="child-checkbox-{{ item['id'] }}">
+                    </td>
                     <td>{{ ci['branch_no'] }}</td>
                     <td>{{ ci['owner'] }}</td>
                     <td>{{ ci['status'] }}</td>
                     <td>{{ ci['checkout_start_date'] }}</td>
                     <td>{{ ci['checkout_end_date'] }}</td>
                     <td>{{ ci['comment'] }}</td>
-                    <td>
-                        <input type="checkbox" name="target_child_ids" value="{{ ci['id'] }}">
-                    </td>
                 </tr>
                 {% endfor %}
             </table>
-            <div style="margin:12px 0;">
-                <label>
-                  <input type="checkbox" name="qty_checked_{{ item['id'] }}">
-                  [ID:{{ item['id'] }}] の数量チェック
-                </label>
-            </div>
         </div>
         {% endfor %}
+
         <div class="form-field">
-            <label for="handler">対応者</label>
+            <label class="form-label" for="handler">対応者</label>
             <input class="form-input" type="text" id="handler" name="handler" value="{{ g.user['username'] }}">
         </div>
         <div class="form-field">
-            <label for="dispose_comment">破棄・譲渡コメント</label>
-            <textarea class="form-input" id="dispose_comment" name="dispose_comment"></textarea>
+            <label class="form-label" for="dispose_comment">破棄・譲渡コメント</label>
+            <textarea class="form-textarea" id="dispose_comment" name="dispose_comment"></textarea>
         </div>
         <div class="form-field">
-            <label for="comment">申請コメント</label>
-            <textarea class="form-input" id="comment" name="comment"></textarea>
+            <label class="form-label" for="comment">申請コメント</label>
+            <textarea class="form-textarea" id="comment" name="comment"></textarea>
         </div>
         <div class="form-field">
-            <label for="approver">承認者</label>
+            <label class="form-label" for="approver">承認者</label>
             <input class="form-input" type="text" id="approver" name="approver" value="">
         </div>
         <div class="button-group">
@@ -131,7 +160,7 @@
     {% endif %}
     {% if finish %}
     <h2>申請内容</h2>
-    <!-- ここは適宜実装（省略可） -->
+    <!-- ここは適宜実装 -->
     <div class="button-group" style="margin-top: 20px;">
         <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
     </div>
