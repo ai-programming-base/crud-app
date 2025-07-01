@@ -115,10 +115,6 @@
                         {% endfor %}
                         {% if item.parsed_values.status == "入庫持ち出し申請中" %}
                             <tr>
-                                <th>管理者</th>
-                                <td>{{ item.parsed_values.sample_manager|default('') }}</td>
-                            </tr>
-                            <tr>
                                 <th>持ち出し開始日</th>
                                 <td>{{ item.parsed_values.checkout_start_date|default('') }}</td>
                             </tr>
@@ -130,11 +126,17 @@
                                 <th>所有者リスト</th>
                                 <td>
                                     {% if item.parsed_values.owner_list %}
-                                        <ul class="mini-list">
+                                        <table style="border-collapse: collapse; font-size: 90%; margin-left: 10px;">
+                                            <tr><th>枝番</th><th>所有者</th></tr>
                                             {% for owner in item.parsed_values.owner_list %}
-                                                <li>{{ owner }}</li>
+                                            <tr>
+                                                <td style="padding: 2px 8px;">{{ loop.index }}</td>
+                                                <td style="padding: 2px 8px;">{{ owner }}</td>
+                                            </tr>
                                             {% endfor %}
-                                        </ul>
+                                        </table>
+                                    {% else %}
+                                        （なし）
                                     {% endif %}
                                 </td>
                             </tr>
