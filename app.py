@@ -835,6 +835,7 @@ def change_owner():
         flash("変更はありませんでした。")
     return redirect(url_for('index'))
 
+
 @app.route('/dispose_transfer_request', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
@@ -881,14 +882,23 @@ def dispose_transfer_request():
             return render_template(
                 'dispose_transfer_form.html',
                 items=items,
-                child_items=child_items
+                child_items=child_items,
+                fields=INDEX_FIELDS
             )
 
         applicant = g.user['username']
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # itemごとに申請・item_application＋item.status変更
 
         for item_id in item_ids:
+            # 親ID（item）の全情報を取得
+            item = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
+            new_values = dict(item)  # ←ここでitem情報すべてを格納
+
+            # 必要な追加情報を上書き・追加
+            new_values['dispose_type'] = dispose_type  # "破棄"または"譲渡"
+            new_values['handler'] = handler
+            new_values['dispose_comment'] = dispose_comment
+
             # このitem_idに紐づく申請対象子アイテム(branch_no付き)
             target_child_branches_this = []
             for cid in target_child_ids:
@@ -896,15 +906,9 @@ def dispose_transfer_request():
                 if row and row['item_id'] == int(item_id):
                     target_child_branches_this.append({"id": cid, "branch_no": row['branch_no']})
 
-            # 【ここを修正】statusは常に「破棄・譲渡申請中」とする
-            new_values = {
-                "item_id": item_id,
-                "dispose_type": dispose_type,  # "破棄"または"譲渡"
-                "handler": handler,
-                "dispose_comment": dispose_comment,
-                "target_child_branches": target_child_branches_this,
-                "status": "破棄・譲渡申請中"
-            }
+            new_values['target_child_branches'] = target_child_branches_this
+            new_values['status'] = "破棄・譲渡申請中"
+
             db.execute('''
                 INSERT INTO item_application
                 (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime)
@@ -938,7 +942,8 @@ def dispose_transfer_request():
         return render_template(
             'dispose_transfer_form.html',
             items=items,
-            child_items=child_items
+            child_items=child_items,
+            fields=INDEX_FIELDS
         )
 
     return redirect(url_for('index'))
