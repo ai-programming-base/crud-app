@@ -300,6 +300,9 @@
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
                 <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
             {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+                <button type="submit" class="main-btn">編集内容を一括保存</button>
+            {% endif %}
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
                 <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
             {% endif %}
