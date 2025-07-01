@@ -97,6 +97,8 @@
                         入庫持ち出し申請
                     {% elif item.parsed_values.status == "入庫申請中" %}
                         入庫申請
+                    {% elif item.parsed_values.status == "返却申請中" %}
+                        返却申請
                     {% elif item.parsed_values.status == "破棄・譲渡申請中" %}
                         破棄・譲渡申請
                     {% else %}
