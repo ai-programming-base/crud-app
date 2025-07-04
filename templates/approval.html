@@ -52,6 +52,14 @@
             if (!confirm("差し戻ししますか？")) return false;
             return true;
         }
+
+        // 上下の全選択チェックボックスを同期
+        function toggleAll(checked) {
+            for(let c of document.getElementsByName('selected_ids')) c.checked = checked;
+            // 反対側も同期
+            document.getElementById('select_all_top').checked = checked;
+            document.getElementById('select_all_bottom').checked = checked;
+        }
     </script>
 </head>
 <body>
@@ -73,8 +81,12 @@
             <input type="hidden" name="from_menu" value="1">
         {% endif %}
         <table>
+            <!-- 先頭行 -->
             <tr>
-                <th><input type="checkbox" onclick="for(let c of document.getElementsByName('selected_ids')) c.checked=this.checked;"></th>
+                <th>
+                  <input type="checkbox" id="select_all_top"
+                         onclick="toggleAll(this.checked);">
+                </th>
                 <th>履歴ID</th>
                 <th>通し番号</th>
                 <th>申請者</th>
@@ -195,6 +207,21 @@
                 <td>{{ item['status'] }}</td>
             </tr>
             {% endfor %}
+            <!-- 最終行（先頭と同じ） -->
+            <tr>
+                <th>
+                  <input type="checkbox" id="select_all_bottom"
+                         onclick="toggleAll(this.checked);">
+                </th>
+                <th>履歴ID</th>
+                <th>通し番号</th>
+                <th>申請者</th>
+                <th>申請内容</th>
+                <th>申請内容詳細</th>
+                <th>申請者コメント</th>
+                <th>申請日時</th>
+                <th>現在ステータス</th>
+            </tr>
         </table>
         <div style="margin-top:15px;">
             <label for="approve_comment"><b>承認/差し戻しコメント:</b></label><br>
