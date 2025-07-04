@@ -341,7 +341,7 @@ def delete_selected():
 def update_items():
     db = get_db()
     ids = request.form.getlist('item_id')
-    user_field_keys = [f['key'] for f in FIELDS if not f.get('internal')]
+    user_field_keys = [f['key'] for f in FIELDS if not f.get('internal', False) and f.get('show_in_index', True)]
     for item_id in ids:
         row_values = []
         for key in user_field_keys:
