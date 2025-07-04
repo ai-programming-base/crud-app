@@ -107,7 +107,8 @@ def init_item_application_db():
                 status TEXT NOT NULL,
                 application_datetime TEXT NOT NULL,
                 approval_datetime TEXT,
-                approver_comment TEXT
+                approver_comment TEXT,
+                original_status TEXT
             )
         ''')
         db.commit()
@@ -422,6 +423,10 @@ def apply_request():
             owner_lists[str(id)] = form.getlist(f'owner_list_{id}')
 
         for id in item_ids:
+            # item_applicationに申請内容を登録
+            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+            original_status = item['status']
+
             # itemのstatusのみ即時変更
             db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
 
@@ -436,13 +441,13 @@ def apply_request():
                 new_values['owner_list'] = owner_lists.get(str(id), [])
             else:
                 new_values['status'] = "入庫申請中"
-            # item_applicationに申請内容を登録
+
             db.execute('''
                 INSERT INTO item_application
-                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime, original_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                id, json.dumps(new_values, ensure_ascii=False), applicant, comment, approver, "申請中", now_str
+                id, json.dumps(new_values, ensure_ascii=False), applicant, comment, approver, "申請中", now_str, original_status
             ))
 
             # 履歴（申請）も必要ならここで追加（省略可）
@@ -513,6 +518,9 @@ def return_request():
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for id in item_ids:
+            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+            original_status = item['status']
+
             db.execute("UPDATE item SET status=? WHERE id=?", ("返却申請中", id))
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
             new_values = dict(item)
@@ -522,10 +530,10 @@ def return_request():
 
             db.execute('''
                 INSERT INTO item_application
-                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime, original_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
-                id, json.dumps(new_values, ensure_ascii=False), applicant, applicant_comment, approver, "申請中", now_str
+                id, json.dumps(new_values, ensure_ascii=False), applicant, applicant_comment, approver, "申請中", now_str, original_status
             ))
         db.commit()
         flash("申請内容を保存しました。承認待ちです。")
@@ -686,6 +694,10 @@ def approval():
                 ))
 
             elif action == 'reject':
+                # original_statusは必ず申請テーブルに入っている前提
+                original_status = app_row['original_status']
+                if original_status:
+                    db.execute("UPDATE item SET status=? WHERE id=?", (original_status, item_id))
                 db.execute(
                     '''
                     UPDATE item_application SET
@@ -953,13 +965,16 @@ def dispose_transfer_request():
             new_values['target_child_branches'] = target_child_branches_this
             new_values['status'] = "破棄・譲渡申請中"
 
+            item = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
+            original_status = item['status']
+
             db.execute('''
                 INSERT INTO item_application
-                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime, original_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 item_id, json.dumps(new_values, ensure_ascii=False), applicant,
-                applicant_comment, approver, "申請中", now_str
+                applicant_comment, approver, "申請中", now_str, original_status
             ))
             db.execute("UPDATE item SET status=? WHERE id=?", ("破棄・譲渡申請中", item_id))
         db.commit()
