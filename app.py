@@ -19,6 +19,17 @@ USER_FIELDS = [f for f in FIELDS if not f.get('internal')]
 INDEX_FIELDS = [f for f in FIELDS if f.get('show_in_index')]
 FIELD_KEYS = [f['key'] for f in FIELDS]
 
+SELECT_FIELD_PATH = os.path.join(os.path.dirname(__file__), 'select_fields.json')
+
+def load_select_fields():
+    if os.path.exists(SELECT_FIELD_PATH):
+        with open(SELECT_FIELD_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def save_select_fields(data):
+    with open(SELECT_FIELD_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -199,6 +210,35 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
 
+
+@app.route('/select_field_config', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin', 'manager')
+def select_field_config():
+    # fields.jsonのユーザー項目のみ
+    fields = [f for f in FIELDS if not f.get('internal')]
+    # 現在の選択式設定をロード
+    select_fields = load_select_fields()   # ←定義必要（例：JSONファイル読み込み）
+
+    if request.method == 'POST':
+        # 選択式フィールド情報の保存
+        new_select_fields = {}
+        for f in fields:
+            key = f['key']
+            # チェックボックス等で「選択式」指定されているか
+            if request.form.get(f"use_{key}") == "1":
+                options = request.form.get(f"options_{key}", "")
+                # カンマ区切りで保存
+                opts = [o.strip() for o in options.split(",") if o.strip()]
+                if opts:
+                    new_select_fields[key] = opts
+        save_select_fields(new_select_fields)  # ←定義必要（例：JSONファイル書き込み）
+        flash("設定を保存しました")
+        return redirect(url_for('select_field_config'))
+
+    return render_template("select_field_config.html", fields=fields, select_fields=select_fields)
+
+
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin', 'manager')
@@ -319,11 +359,23 @@ def index():
 @login_required
 @roles_required('admin', 'manager', 'proper', 'partner')
 def add():
+    # 選択肢設定ファイルのパス
+    SELECT_FIELDS_PATH = os.path.join(os.path.dirname(__file__), 'select_fields.json')
+    # 読み込み: 存在しなければ空dict
+    if os.path.exists(SELECT_FIELDS_PATH):
+        with open(SELECT_FIELDS_PATH, encoding='utf-8') as f:
+            select_fields = json.load(f)
+    else:
+        select_fields = {}
+
     if request.method == 'POST':
-        user_values = [request.form.get(f['key'], '').strip() for f in USER_FIELDS]
+        user_values = []
         errors = []
         for i, f in enumerate(USER_FIELDS):
-            if f.get('required') and not user_values[i]:
+            # 選択式ならselectの値を、通常はhiddenから取得
+            v = request.form.get(f['key'], '').strip()
+            user_values.append(v)
+            if f.get('required') and not v:
                 errors.append(f"{f['name']}（必須）を入力してください。")
         internal_values = []
         for f in FIELDS:
@@ -337,7 +389,8 @@ def add():
         if errors:
             for msg in errors:
                 flash(msg)
-            return render_template('form.html', fields=USER_FIELDS, values=user_values)
+            # 選択肢も再度渡す
+            return render_template('form.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields)
 
         db = get_db()
         db.execute(
@@ -347,14 +400,17 @@ def add():
         db.commit()
 
         if 'add_and_next' in request.form:
-            return render_template('form.html', fields=USER_FIELDS, values=user_values, message="登録しました。同じ内容で新規入力できます。")
+            # 入力値は再現
+            return render_template('form.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields, message="登録しました。同じ内容で新規入力できます。")
         else:
             if request.form.get('from_menu') or request.args.get('from_menu'):
                 return redirect(url_for('menu'))
             else:
                 return redirect(url_for('index'))
 
-    return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS])
+    # GET時: 空欄または初期値で表示
+    return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS], select_fields=select_fields)
+
 
 @app.route('/delete_selected', methods=['POST'])
 @login_required
