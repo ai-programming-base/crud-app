@@ -144,6 +144,114 @@
             } else {
                 document.getElementById('toggle-filter').classList.add('on');
             }
+            // フィルタ候補（サーバから渡す。カラム名→候補リスト）
+            var filterChoices = {{ filter_choices_dict | tojson }};
+            document.querySelectorAll('.filter-cell-input').forEach(function(div){
+                let col = div.dataset.col;
+                let choices = (filterChoices[col] || []).slice();
+
+                let dropdown = div.parentElement.querySelector('.filter-dropdown');
+                let hidden = div.parentElement.querySelector('input[type="hidden"]');
+                let state = { open:false, value:div.textContent.trim(), filtered:choices.slice(), selected:-1 };
+
+                function openDropdown() {
+                    state.open = true;
+                    dropdown.style.display = '';
+                    updateDropdown();
+                }
+                function closeDropdown() {
+                    state.open = false;
+                    dropdown.style.display = 'none';
+                    state.selected = -1;
+                }
+                function updateDropdown() {
+                    let txt = state.value;
+                    let filtered = !txt ? choices.slice() : choices.filter(v => v && v.indexOf(txt) !== -1);
+                    state.filtered = filtered;
+                    dropdown.innerHTML = '';
+                    filtered.forEach((v, idx) => {
+                        let opt = document.createElement('div');
+                        opt.textContent = v;
+                        opt.tabIndex = -1;
+                        opt.style.cssText = 'padding:3px 7px; cursor:pointer;';
+                        if (idx === state.selected) {
+                            opt.style.background = '#b1dafc';
+                        }
+                        opt.addEventListener('mousedown', function(e){
+                            e.preventDefault();
+                            choose(idx);
+                        });
+                        dropdown.appendChild(opt);
+                    });
+                }
+                function choose(idx) {
+                    let v = state.filtered[idx] || '';
+                    div.textContent = v;
+                    hidden.value = v;
+                    closeDropdown();
+                    // 自動submit
+                    setTimeout(function(){
+                        document.getElementById('filter-form').submit();
+                    }, 10);
+                }
+                function startEdit() {
+                    div.classList.add('filter-editing');
+                    div.contentEditable = true;
+                    div.focus();
+                    state.value = div.textContent.trim();
+                    state.selected = -1;
+                    openDropdown();
+                    updateDropdown();
+                }
+                function finishEdit() {
+                    div.classList.remove('filter-editing');
+                    div.contentEditable = false;
+                    closeDropdown();
+                    div.textContent = state.value;
+                    hidden.value = state.value;
+                }
+
+                div.addEventListener('click', function(e){
+                    if (!state.open) startEdit();
+                });
+                div.addEventListener('input', function(e){
+                    state.value = div.textContent.trim();
+                    state.selected = -1;
+                    updateDropdown();
+                });
+                div.addEventListener('keydown', function(e){
+                    if (!state.open) return;
+                    if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        if (state.selected < state.filtered.length - 1) {
+                            state.selected++;
+                            updateDropdown();
+                        }
+                    } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        if (state.selected > 0) {
+                            state.selected--;
+                            updateDropdown();
+                        }
+                    } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (state.selected >= 0 && state.filtered.length) {
+                            choose(state.selected);
+                        } else {
+                            finishEdit();
+                            setTimeout(function(){
+                                document.getElementById('filter-form').submit();
+                            }, 10);
+                        }
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        finishEdit();
+                    }
+                });
+                div.addEventListener('blur', function(e){
+                    setTimeout(finishEdit, 150); // dropdownクリックにも対応
+                });
+            });
         });
 
         function submitDelete() {
@@ -246,10 +354,30 @@
                 <td class="col-checkbox filter-cell"></td>
                 <td class="col-id filter-cell" style="text-align:right;color:#666;font-weight:bold;">フィルタ行</td>
                 {% for f in fields %}
-                <td class="filter-cell" data-filter-editable="true">
-                    <input type="text" name="{{f.key}}_filter" value="{{ filters.get(f.key, '') }}" placeholder="filter">
+                <td class="filter-cell" data-filter-editable="true"
+                    data-col="{{ f.key }}" style="position:relative;">
+                    <div class="filter-cell-input"
+                        tabindex="0"
+                        data-col="{{ f.key }}"
+                        style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
+                    >{{ filters.get(f.key, '') }}</div>
+                    <input type="hidden" name="{{f.key}}_filter" value="{{ filters.get(f.key, '') }}">
+                    <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
+                    </div>
                 </td>
                 {% endfor %}
+                <!-- サンプル数フィルタ列 -->
+                <td class="filter-cell" data-filter-editable="true"
+                    data-col="sample_count" style="position:relative;">
+                <div class="filter-cell-input"
+                    tabindex="0"
+                    data-col="sample_count"
+                    style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
+                >{{ filters.get('sample_count', '') }}</div>
+                <input type="hidden" name="sample_count_filter" value="{{ filters.get('sample_count', '') }}">
+                <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
+                </div>
+                </td>
             </tr>
         </table>
     </form>
