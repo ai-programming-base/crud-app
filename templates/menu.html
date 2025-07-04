@@ -27,6 +27,9 @@
         <a href="{{ url_for('add', from_menu=1) }}" class="btn">起票（新規登録）</a>
         <a href="{{ url_for('index') }}" class="btn">一覧表</a>
         <a href="{{ url_for('my_applications', from_menu=1) }}" class="btn">申請アイテム</a>
+        {% if 'admin' in g.user_roles or 'manager' in g.user_roles  or 'proper' in g.user_roles %}
+            <a href="{{ url_for('inventory_list') }}" class="btn">棚卸し一覧</a>
+        {% endif %}
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
             <a href="{{ url_for('approval', from_menu=1) }}" class="btn">承認アイテム</a>
             <a href="{{ url_for('register') }}" class="btn btn-primary">ユーザー追加</a>

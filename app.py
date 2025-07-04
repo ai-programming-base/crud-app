@@ -132,6 +132,20 @@ def init_application_history_db():
         ''')
         db.commit()
 
+def init_inventory_check_db():
+    with get_db() as db:
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS inventory_check (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                checked_at TEXT NOT NULL,
+                checker TEXT NOT NULL,
+                comment TEXT,
+                FOREIGN KEY(item_id) REFERENCES item(id)
+            )
+        ''')
+        db.commit()
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -1026,10 +1040,95 @@ def dispose_transfer_request():
     return redirect(url_for('index'))
 
 
+@app.route('/inventory_list')
+@login_required
+@roles_required('admin', 'manager', 'proper')
+def inventory_list():
+    db = get_db()
+    username = g.user['username']
+    user_roles = g.user_roles
+
+    if 'admin' in user_roles or 'manager' in user_roles:
+        # 全件表示
+        items = db.execute('''
+            SELECT i.*, 
+                ic.checked_at as last_checked_at, 
+                ic.checker as last_checker
+            FROM item i
+            LEFT JOIN (
+                SELECT a.item_id, a.checked_at, a.checker
+                FROM inventory_check a
+                INNER JOIN (
+                    SELECT item_id, MAX(checked_at) as max_checked
+                    FROM inventory_check GROUP BY item_id
+                ) b
+                ON a.item_id = b.item_id AND a.checked_at = b.max_checked
+            ) ic ON i.id = ic.item_id
+            ORDER BY i.id DESC
+        ''').fetchall()
+    elif 'proper' in user_roles:
+        # 管理者が自分だけを表示（sample_manager列が自分のユーザー名）
+        items = db.execute('''
+            SELECT i.*, 
+                ic.checked_at as last_checked_at, 
+                ic.checker as last_checker
+            FROM item i
+            LEFT JOIN (
+                SELECT a.item_id, a.checked_at, a.checker
+                FROM inventory_check a
+                INNER JOIN (
+                    SELECT item_id, MAX(checked_at) as max_checked
+                    FROM inventory_check GROUP BY item_id
+                ) b
+                ON a.item_id = b.item_id AND a.checked_at = b.max_checked
+            ) ic ON i.id = ic.item_id
+            WHERE i.sample_manager = ?
+            ORDER BY i.id DESC
+        ''', (username,)).fetchall()
+    else:
+        # partnerや他ロールはここで制御
+        items = []
+
+    return render_template('inventory_list.html', items=items, fields=INDEX_FIELDS)
+
+
+@app.route('/inventory_check', methods=['POST'])
+@login_required
+@roles_required('admin', 'manager', 'proper')
+def inventory_check():
+    db = get_db()
+    item_ids = request.form.getlist('selected_ids')
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for id in item_ids:
+        db.execute(
+            "INSERT INTO inventory_check (item_id, checked_at, checker) VALUES (?, ?, ?)",
+            (id, now, g.user['username'])
+        )
+    db.commit()
+    flash('棚卸しを登録しました')
+    return redirect(url_for('inventory_list'))
+
+
+@app.route('/inventory_history/<int:item_id>')
+@login_required
+@roles_required('admin', 'manager', 'proper')
+def inventory_history(item_id):
+    db = get_db()
+    rows = db.execute(
+        "SELECT * FROM inventory_check WHERE item_id=? ORDER BY checked_at DESC",
+        (item_id,)
+    ).fetchall()
+    item = db.execute(
+        "SELECT * FROM item WHERE id=?", (item_id,)
+    ).fetchone()
+    return render_template('inventory_history.html', rows=rows, item=item)
+
+
 if __name__ == '__main__':
     init_db()
     init_user_db()
     init_child_item_db()
     init_item_application_db()
     init_application_history_db()
+    init_inventory_check_db()
     app.run(debug=True)
