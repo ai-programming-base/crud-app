@@ -145,15 +145,7 @@
                                 <th>返却確認日</th>
                                 <td>{{ item.parsed_values.return_date|default('') }}</td>
                             </tr>
-                            <tr>
-                                <th>保管場所</th>
-                                <td>{{ item.parsed_values.storage|default('') }}</td>
-                            </tr>
-                            <tr>
-                                <th>コメント</th>
-                                <td>{{ item.parsed_values.comment|default('') }}</td>
-                            </tr>
-                        {% elif item.parsed_values.status in ["破棄・譲渡申請中", "破棄", "譲渡"] %}
+                        {% elif item.parsed_values.status == "破棄・譲渡申請中" %}
                             <tr>
                                 <th>種別</th>
                                 <td>{{ item.parsed_values.dispose_type }}</td>

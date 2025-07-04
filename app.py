@@ -519,7 +519,6 @@ def return_request():
             new_values['return_date'] = return_date
             new_values['storage'] = storage
             new_values['status'] = "返却申請中"
-            new_values['comment'] = applicant_comment
 
             db.execute('''
                 INSERT INTO item_application
