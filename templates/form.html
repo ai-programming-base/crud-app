@@ -25,7 +25,6 @@
         .cancel-btn:hover { background: #888; color: #fff; }
         .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
         .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
-        /* セレクトがセルっぽくなるスタイル */
         .cell-select-wrap {
             display: block;
             width: 100%;
@@ -57,7 +56,6 @@
         td.select-cell:focus-within {
             background: #d0e3f7;
         }
-        /* 下向き矢印（カスタム） */
         .cell-select::-ms-expand { display: none; }
         .cell-select-wrap:after {
             content: '';
@@ -71,10 +69,28 @@
             transform: translateY(-50%);
             pointer-events: none;
         }
+        td.date-cell input[type="date"] {
+            width: 95%;
+            height: 38px;
+            font-size: 1rem;
+            border: none;
+            background: none;
+            padding: 0 8px;
+            text-align: center;
+        }
+        td.date-cell {
+            background: #f8fff8;
+            padding: 0 8px;
+        }
+        td.date-cell:hover,
+        td.date-cell:focus-within {
+            background: #e1f7d0;
+        }
+        /* intセルも通常セルと同じでOK */
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // テキストセルだけ編集
+            // Excel風編集
             const cells = Array.from(document.querySelectorAll('td[data-editable="true"]'));
             cells.forEach((td, idx) => {
                 td.addEventListener('click', function(e) {
@@ -111,15 +127,28 @@
                     td.addEventListener('keydown', keyHandler);
                 });
             });
-            // 必須項目バリデーション
+
+            // 必須&型バリデーション
             document.querySelector('form').addEventListener('submit', function(e) {
                 {% for f in fields %}
-                {% if f.required %}
                 var node = document.querySelector('[name="{{f.key}}"]');
+                {% if f.required %}
                 if (node) {
                     var v = node.value.trim();
                     if (!v) {
                         alert("{{f.name}}は必須項目です。");
+                        node.focus();
+                        e.preventDefault();
+                        return false;
+                    }
+                }
+                {% endif %}
+                {% if f.type == 'int' %}
+                if (node) {
+                    var v = node.value.trim();
+                    if (!/^[1-9][0-9]*$/.test(v)) {
+                        alert("{{f.name}}は1以上の整数で入力してください。");
+                        node.focus();
                         e.preventDefault();
                         return false;
                     }
@@ -166,6 +195,7 @@
                 <td>
                     {{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}
                 </td>
+                {# 選択式 #}
                 {% if select_fields and f.key in select_fields %}
                 <td class="select-cell">
                     <span class="cell-select-wrap" style="display:block; position:relative;">
@@ -177,6 +207,12 @@
                         </select>
                     </span>
                 </td>
+                {# 日付フィールド #}
+                {% elif f.type == 'date' %}
+                <td class="date-cell">
+                    <input type="date" name="{{ f.key }}" value="{{ values[loop.index0]|default('') }}" pattern="\d{4}-\d{2}-\d{2}">
+                </td>
+                {# int型は通常セル（テキスト）と同じ #}
                 {% else %}
                 <td data-editable="true">
                     <input type="hidden" name="{{ f.key }}" value="{{ values[loop.index0] if values is defined else '' }}">
