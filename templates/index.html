@@ -312,6 +312,17 @@
             form.submit();
         }
 
+        function copyToAdd() {
+            // 1件だけ選択しているIDを取得
+            const checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+            if (checked.length !== 1) {
+                alert("コピー起票するアイテムを1件だけ選択してください");
+                return;
+            }
+            const id = checked[0].value;
+            // /add?copy_id=xxx へ遷移
+            window.location.href = "/add?copy_id=" + encodeURIComponent(id);
+        }
     </script>
 </head>
 <body>
@@ -412,6 +423,7 @@
         <div class="button-group" style="margin-top:4px;">
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
                 <a href="{{ url_for('add') }}" class="main-btn">起票（新規登録）</a>
+                <button type="button" class="main-btn" onclick="copyToAdd()">起票（コピー）</button>
             {% endif %}
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
                 <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>

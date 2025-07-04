@@ -359,9 +359,7 @@ def index():
 @login_required
 @roles_required('admin', 'manager', 'proper', 'partner')
 def add():
-    # 選択肢設定ファイルのパス
     SELECT_FIELDS_PATH = os.path.join(os.path.dirname(__file__), 'select_fields.json')
-    # 読み込み: 存在しなければ空dict
     if os.path.exists(SELECT_FIELDS_PATH):
         with open(SELECT_FIELDS_PATH, encoding='utf-8') as f:
             select_fields = json.load(f)
@@ -369,14 +367,17 @@ def add():
         select_fields = {}
 
     if request.method == 'POST':
-        user_values = []
+        user_values = {}
         errors = []
-        for i, f in enumerate(USER_FIELDS):
-            # 選択式ならselectの値を、通常はhiddenから取得
+        for f in USER_FIELDS:
             v = request.form.get(f['key'], '').strip()
-            user_values.append(v)
+            user_values[f['key']] = v
             if f.get('required') and not v:
                 errors.append(f"{f['name']}（必須）を入力してください。")
+            # int型バリデーション
+            if f.get('type') == 'int' and v:
+                if not v.isdigit() or int(v) < 1:
+                    errors.append(f"{f['name']}は1以上の整数で入力してください。")
         internal_values = []
         for f in FIELDS:
             if f.get('internal', False):
@@ -384,12 +385,13 @@ def add():
                     internal_values.append("入庫前")
                 else:
                     internal_values.append("")
-        values = user_values + internal_values
+        # DB登録用リストは順序通り
+        values = [user_values.get(f['key'], '') for f in USER_FIELDS] + internal_values
 
         if errors:
             for msg in errors:
                 flash(msg)
-            # 選択肢も再度渡す
+            # 再描画時もdictで渡す
             return render_template('form.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields)
 
         db = get_db()
@@ -400,7 +402,6 @@ def add():
         db.commit()
 
         if 'add_and_next' in request.form:
-            # 入力値は再現
             return render_template('form.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields, message="登録しました。同じ内容で新規入力できます。")
         else:
             if request.form.get('from_menu') or request.args.get('from_menu'):
@@ -408,8 +409,18 @@ def add():
             else:
                 return redirect(url_for('index'))
 
-    # GET時: 空欄または初期値で表示
-    return render_template('form.html', fields=USER_FIELDS, values=["" for _ in USER_FIELDS], select_fields=select_fields)
+    # --- GET時（コピーして起票サポート）---
+    # パラメータでcopy_idが来たら、そのIDの値を初期値に使う
+    copy_id = request.args.get("copy_id")
+    values = {f['key']: "" for f in USER_FIELDS}
+    if copy_id:
+        db = get_db()
+        item = db.execute("SELECT * FROM item WHERE id=?", (copy_id,)).fetchone()
+        if item:
+            item = dict(item)
+            for f in USER_FIELDS:
+                values[f['key']] = str(item.get(f['key'], '')) if item.get(f['key']) is not None else ""
+    return render_template('form.html', fields=USER_FIELDS, values=values, select_fields=select_fields)
 
 
 @app.route('/delete_selected', methods=['POST'])

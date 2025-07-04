@@ -86,7 +86,6 @@
         td.date-cell:focus-within {
             background: #e1f7d0;
         }
-        /* intセルも通常セルと同じでOK */
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -202,7 +201,7 @@
                         <select name="{{ f.key }}" class="cell-select">
                             <option value="">Select</option>
                             {% for opt in select_fields[f.key] %}
-                              <option value="{{ opt }}" {% if values[loop.index0] == opt %}selected{% endif %}>{{ opt }}</option>
+                              <option value="{{ opt }}" {% if values[f.key] == opt %}selected{% endif %}>{{ opt }}</option>
                             {% endfor %}
                         </select>
                     </span>
@@ -210,13 +209,13 @@
                 {# 日付フィールド #}
                 {% elif f.type == 'date' %}
                 <td class="date-cell">
-                    <input type="date" name="{{ f.key }}" value="{{ values[loop.index0]|default('') }}" pattern="\d{4}-\d{2}-\d{2}">
+                    <input type="date" name="{{ f.key }}" value="{{ values[f.key]|default('') }}" pattern="\d{4}-\d{2}-\d{2}">
                 </td>
-                {# int型は通常セル（テキスト）と同じ #}
+                {# int型/通常 #}
                 {% else %}
                 <td data-editable="true">
-                    <input type="hidden" name="{{ f.key }}" value="{{ values[loop.index0] if values is defined else '' }}">
-                    {{ values[loop.index0] if values is defined else '' }}
+                    <input type="hidden" name="{{ f.key }}" value="{{ values[f.key]|default('') }}">
+                    {{ values[f.key]|default('') }}
                 </td>
                 {% endif %}
             </tr>
