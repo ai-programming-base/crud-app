@@ -638,8 +638,12 @@ def approval():
                         ("入庫", new_values.get("storage", ""), item_id)
                     )
                     db.execute(
-                        "UPDATE child_item SET status=?, checkout_end_date=? WHERE item_id=?",
-                        ("返却済", new_values.get("return_date", ""), item_id)
+                        """
+                        UPDATE child_item
+                        SET status=?, checkout_end_date=?
+                        WHERE item_id=? AND status NOT IN (?, ?)
+                        """,
+                        ("返却済", new_values.get("return_date", ""), item_id, "破棄", "譲渡")
                     )
                 # 破棄・譲渡申請の場合
                 elif status == "破棄・譲渡申請中":
