@@ -45,7 +45,7 @@
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // Excelライク編集: Tab/Shift+Tabで左右、Enter/Shift+Enterで上下に移動
+            // Excelライク編集
             const table = document.querySelector('form#main-form table');
             const rows = Array.from(table.querySelectorAll('tr'));
             const dataRowStart = rows.findIndex(r => r.querySelector('td[data-editable="true"]'));
@@ -144,7 +144,6 @@
             } else {
                 document.getElementById('toggle-filter').classList.add('on');
             }
-            // フィルタ候補（サーバから渡す。カラム名→候補リスト）
             var filterChoices = {{ filter_choices_dict | tojson }};
             document.querySelectorAll('.filter-cell-input').forEach(function(div){
                 let col = div.dataset.col;
@@ -189,7 +188,6 @@
                     div.textContent = v;
                     hidden.value = v;
                     closeDropdown();
-                    // 自動submit
                     setTimeout(function(){
                         document.getElementById('filter-form').submit();
                     }, 10);
@@ -249,7 +247,7 @@
                     }
                 });
                 div.addEventListener('blur', function(e){
-                    setTimeout(finishEdit, 150); // dropdownクリックにも対応
+                    setTimeout(finishEdit, 150);
                 });
             });
         });
@@ -313,14 +311,12 @@
         }
 
         function copyToAdd() {
-            // 1件だけ選択しているIDを取得
             const checked = document.querySelectorAll('input[name="selected_ids"]:checked');
             if (checked.length !== 1) {
                 alert("コピー起票するアイテムを1件だけ選択してください");
                 return;
             }
             const id = checked[0].value;
-            // /add?copy_id=xxx へ遷移
             window.location.href = "/add?copy_id=" + encodeURIComponent(id);
         }
     </script>
@@ -351,7 +347,29 @@
       {% endif %}
       <button type="button" class="filter-toggle" id="toggle-filter">フィルタを表示/非表示</button>
     </div>
+    <!-- ▼ 表示件数セレクタ -->
+    <div style="margin:10px 0 10px 0; display:flex; align-items:center;">
+      <form method="get" id="per-page-form" style="display:inline;">
+        {% for k, v in filters.items() %}
+          {% if v %}
+            <input type="hidden" name="{{k}}_filter" value="{{v}}">
+          {% endif %}
+        {% endfor %}
+        <select name="per_page" onchange="document.getElementById('per-page-form').submit()" style="font-size:14px; padding:4px 6px;">
+          <option value="10" {% if per_page == '10' %}selected{% endif %}>10件</option>
+          <option value="20" {% if per_page == '20' %}selected{% endif %}>20件</option>
+          <option value="50" {% if per_page == '50' %}selected{% endif %}>50件</option>
+          <option value="100" {% if per_page == '100' %}selected{% endif %}>100件</option>
+          <option value="all" {% if per_page == 'all' %}selected{% endif %}>全て</option>
+        </select>
+        <input type="hidden" name="page" value="1">
+      </form>
+      <span style="margin-left:12px;">表示件数の変更</span>
+    </div>
+    <!-- ▲ 表示件数セレクタ -->
+
     <form id="filter-form" method="get" action="{{ url_for('index') }}">
+        <input type="hidden" name="per_page" value="{{ per_page }}">
         <table>
             <tr>
                 <th class="col-checkbox"></th>
@@ -377,7 +395,6 @@
                     </div>
                 </td>
                 {% endfor %}
-                <!-- サンプル数フィルタ列 -->
                 <td class="filter-cell" data-filter-editable="true"
                     data-col="sample_count" style="position:relative;">
                 <div class="filter-cell-input"
@@ -392,7 +409,7 @@
             </tr>
         </table>
     </form>
-    <form id="main-form" method="post" action="{{ url_for('update_items', page=page, **filters) }}">
+    <form id="main-form" method="post" action="{{ url_for('update_items', page=page, per_page=per_page, **filters) }}">
         <table>
             {% for item in items %}
             <tr>
@@ -416,13 +433,13 @@
             {% if p == page %}
               <strong>{{p}}</strong>
             {% else %}
-              <a href="{{ url_for('index', page=p, **filters) }}">{{p}}</a>
+              <a href="{{ url_for('index', page=p, per_page=per_page, **filters) }}">{{p}}</a>
             {% endif %}
           {% endfor %}
         </div>
         <div class="button-group" style="margin-top:4px;">
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-                <a href="{{ url_for('add') }}" class="main-btn">起票（新規登録）</a>
+                <a href="{{ url_for('add', per_page=per_page, **filters) }}" class="main-btn">起票（新規登録）</a>
                 <button type="button" class="main-btn" onclick="copyToAdd()">起票（コピー）</button>
             {% endif %}
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}

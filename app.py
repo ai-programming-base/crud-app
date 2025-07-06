@@ -286,12 +286,20 @@ def register():
 def menu():
     return render_template('menu.html')
 
+
 @app.route('/list')
 @login_required
 def index():
-    page = int(request.args.get('page', 1))
-    per_page = 10
-    offset = (page - 1) * per_page
+    # ページ件数指定: ?per_page=10/20/50/100/all
+    per_page_raw = request.args.get('per_page', '10')
+    if per_page_raw == 'all':
+        per_page = None
+        page = 1
+        offset = 0
+    else:
+        per_page = int(per_page_raw)
+        page = int(request.args.get('page', 1))
+        offset = (page - 1) * per_page
 
     filters = {}
     where = []
@@ -302,56 +310,85 @@ def index():
         if v:
             where.append(f"{f['key']} LIKE ?")
             params.append(f"%{v}%")
-    # サンプル数列のフィルタ取得（カラム名は 'sample_count'）
     sample_count_filter = request.args.get("sample_count_filter", "").strip()
     filters['sample_count'] = sample_count_filter
-    # sample_countはSQL側では計算列なのでPythonで後フィルタ
-
     where_clause = "WHERE " + " AND ".join(where) if where else ""
     db = get_db()
-    total = db.execute(f"SELECT COUNT(*) FROM item {where_clause}", params).fetchone()[0]
-    items = db.execute(
-        f"SELECT * FROM item {where_clause} ORDER BY id DESC LIMIT ? OFFSET ?",
-        params + [per_page, offset]
-    ).fetchall()
 
-    item_list = []
-    for item in items:
-        item = dict(item)
-        item_id = item['id']
-        child_total = db.execute(
-            "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
-        ).fetchone()[0]
-        if child_total == 0:
-            item['sample_count'] = item.get('num_of_samples', 0)
+    # 通常/サンプル数フィルタによる分岐
+    if not sample_count_filter:
+        total = db.execute(f"SELECT COUNT(*) FROM item {where_clause}", params).fetchone()[0]
+        query = f"SELECT * FROM item {where_clause} ORDER BY id DESC"
+        if per_page is not None:
+            query += " LIMIT ? OFFSET ?"
+            items = db.execute(query, params + [per_page, offset]).fetchall()
         else:
-            cnt = db.execute(
-                "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
-                (item_id, "破棄", "譲渡")
+            items = db.execute(query, params).fetchall()
+        item_list = []
+        for item in items:
+            item = dict(item)
+            item_id = item['id']
+            child_total = db.execute(
+                "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
             ).fetchone()[0]
-            item['sample_count'] = cnt
-        item_list.append(item)
+            if child_total == 0:
+                item['sample_count'] = item.get('num_of_samples', 0)
+            else:
+                cnt = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                    (item_id, "破棄", "譲渡")
+                ).fetchone()[0]
+                item['sample_count'] = cnt
+            item_list.append(item)
+    else:
+        # サンプル数フィルタ時はPython側でフィルタ
+        rows = db.execute(
+            f"SELECT * FROM item {where_clause} ORDER BY id DESC",
+            params
+        ).fetchall()
+        items_all = []
+        for item in rows:
+            item = dict(item)
+            item_id = item['id']
+            child_total = db.execute(
+                "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+            ).fetchone()[0]
+            if child_total == 0:
+                item['sample_count'] = item.get('num_of_samples', 0)
+            else:
+                cnt = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                    (item_id, "破棄", "譲渡")
+                ).fetchone()[0]
+                item['sample_count'] = cnt
+            items_all.append(item)
+        items_filtered = [item for item in items_all if str(item['sample_count']) == sample_count_filter]
+        total = len(items_filtered)
+        if per_page is not None:
+            item_list = items_filtered[offset:offset+per_page]
+        else:
+            item_list = items_filtered
 
-    # サンプル数のフィルタ（Python側で適用）
-    if sample_count_filter:
-        item_list = [item for item in item_list if str(item['sample_count']) == sample_count_filter]
-
-    # 2列目（fields全部）＋サンプル数列の重複なし候補を構築
+    # フィルタ用候補（辞書）
     filter_choices_dict = {}
-    # fieldsカラム
     for f in INDEX_FIELDS:
         col = f['key']
         rows = db.execute(f"SELECT DISTINCT {col} FROM item WHERE {col} IS NOT NULL AND {col} != ''").fetchall()
         filter_choices_dict[col] = sorted({str(row[col]) for row in rows if row[col] not in (None, '')})
-    # sample_countカラム（item_listでの値を使う）
     filter_choices_dict['sample_count'] = sorted({str(item['sample_count']) for item in item_list})
 
-    page_count = max(1, (len(item_list) + per_page - 1) // per_page)
+    # ページ数
+    if per_page is not None:
+        page_count = max(1, (total + per_page - 1) // per_page)
+    else:
+        page_count = 1
+
     return render_template(
         'index.html',
         items=item_list, page=page, page_count=page_count,
         filters=filters, total=total, fields=INDEX_FIELDS,
-        filter_choices_dict=filter_choices_dict
+        filter_choices_dict=filter_choices_dict,
+        per_page=per_page_raw,
     )
 
 
