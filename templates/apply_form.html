@@ -157,7 +157,9 @@
             const m = now.getMonth();
             const after3 = new Date(y, m + 3, 1);
             const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
-            return lastDay.toISOString().slice(0, 10);
+            // 日本のローカル表記にする
+            return lastDay.toLocaleDateString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit'})
+                        .replace(/\//g, '-');
         }
 
         document.addEventListener("DOMContentLoaded", function() {
