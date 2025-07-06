@@ -458,6 +458,7 @@ def update_items():
     else:
         return redirect(url_for('index'))
 
+
 @app.route('/apply_request', methods=['POST', 'GET'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
@@ -493,6 +494,11 @@ def apply_request():
         qty_checked = form.getlist('qty_checked')
         with_checkout = form.get("with_checkout") == "1"
 
+        # ▼ 新規：譲渡申請情報の取得
+        with_transfer = form.get("with_transfer") == "1" if with_checkout else False
+        transfer_branch_ids = form.getlist("transfer_branch_ids") if with_checkout and with_transfer else []
+        transfer_comment = form.get("transfer_comment", "") if with_checkout and with_transfer else ""
+
         errors = []
         if not manager:
             errors.append("管理者を入力してください。")
@@ -500,6 +506,13 @@ def apply_request():
             errors.append("承認者を入力してください。")
         if len(qty_checked) != len(item_ids):
             errors.append("すべての数量チェックをしてください。")
+        # ▼ 新規：譲渡申請ONなら枝番必須
+        if with_checkout and with_transfer:
+            if not transfer_branch_ids:
+                errors.append("譲渡する枝番を選択してください。")
+            if not transfer_comment.strip():
+                errors.append("譲渡コメントを入力してください。")
+
         if errors:
             items = db.execute(
                 f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
@@ -509,17 +522,22 @@ def apply_request():
                 flash(msg)
             return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
 
-        # ステータス
-        new_status = "入庫持ち出し申請中" if with_checkout else "入庫申請中"
+        # ▼ ステータス分岐
+        if with_checkout and with_transfer:
+            new_status = "入庫持ち出し譲渡申請中"
+        elif with_checkout:
+            new_status = "入庫持ち出し申請中"
+        else:
+            new_status = "入庫申請中"
 
         applicant = g.user['username']
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         start_date = form.get('start_date', '')
         end_date = form.get('end_date', '')
+
         # 持ち出し同時申請時の所有者欄
         owner_lists = {}
         for id in item_ids:
-            # owner_list_<id> が複数存在し得る
             owner_lists[str(id)] = form.getlist(f'owner_list_{id}')
 
         for id in item_ids:
@@ -534,7 +552,25 @@ def apply_request():
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
             new_values = dict(item)
             new_values['sample_manager'] = manager
-            if with_checkout:
+            # ▼ 新規：譲渡申請情報
+            if with_checkout and with_transfer:
+                new_values['status'] = "入庫持ち出し譲渡申請中"
+                new_values['checkout_start_date'] = start_date
+                new_values['checkout_end_date'] = end_date
+                new_values['owner_list'] = owner_lists.get(str(id), [])
+                # transfer_branch_ids 形式は itemID_branchNo。ここではitemごとに格納
+                transfer_ids_this = []
+                for t in transfer_branch_ids:
+                    # t = "itemID_branchNo" → このitemの分だけ抽出
+                    try:
+                        tid, branch_no = t.split("_")
+                        if str(tid) == str(id):
+                            transfer_ids_this.append(int(branch_no))
+                    except Exception:
+                        continue
+                new_values['transfer_branch_nos'] = transfer_ids_this  # このitemについての譲渡枝番リスト
+                new_values['transfer_comment'] = transfer_comment
+            elif with_checkout:
                 new_values['status'] = "入庫持ち出し申請中"
                 new_values['checkout_start_date'] = start_date
                 new_values['checkout_end_date'] = end_date
@@ -549,8 +585,6 @@ def apply_request():
             ''', (
                 id, json.dumps(new_values, ensure_ascii=False), applicant, comment, approver, "申請中", now_str, original_status
             ))
-
-            # 履歴（申請）も必要ならここで追加（省略可）
 
         db.commit()
         flash("申請内容を保存しました。承認待ちです。")
@@ -672,6 +706,7 @@ def approval():
         comment = request.form.get('approve_comment', '').strip()
         action = request.form.get('action')
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_date = datetime.now().strftime("%Y-%m-%d")
 
         if not selected_ids:
             flash("対象を選択してください")
@@ -696,22 +731,58 @@ def approval():
                 continue
             item_id = app_row['item_id']
             new_values = json.loads(app_row['new_values'])
-
             status = new_values.get('status')
+
             if action == 'approve':
-                # itemテーブルのカラムのみでUPDATE
-                item_columns = set(FIELD_KEYS)  # fields.jsonのkeyのみ
+                item_columns = set(FIELD_KEYS)
                 filtered_values = {k: v for k, v in new_values.items() if k in item_columns}
                 set_clause = ", ".join([f"{k}=?" for k in filtered_values.keys()])
                 params = [filtered_values[k] for k in filtered_values.keys()]
-                if set_clause:  # 念のため
+                if set_clause:
                     db.execute(
                         f'UPDATE item SET {set_clause} WHERE id=?',
                         params + [item_id]
                     )
 
-                # 持ち出し同時申請の場合
-                if status == "入庫持ち出し申請中":
+                if status == "入庫持ち出し譲渡申請中":
+                    # 1. itemテーブル: ステータス"入庫"→"持ち出し中"（可読性のため2段階でもOK。ここでは一気に"持ち出し中"に）
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
+
+                    start_date = new_values.get("checkout_start_date", "")
+                    end_date = new_values.get("checkout_end_date", "")
+                    owners = new_values.get("owner_list", [])
+                    num_of_samples = int(new_values.get("num_of_samples", 1))
+                    if not owners:
+                        owner = new_values.get("sample_manager", "")
+                        owners = [owner] * num_of_samples
+
+                    # 2. child_item（持ち出し分）を「持ち出し中」で作成または更新
+                    for idx, owner in enumerate(owners, 1):
+                        db.execute(
+                            '''
+                            INSERT INTO child_item
+                                (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            ON CONFLICT(item_id, branch_no)
+                            DO UPDATE SET
+                                owner=excluded.owner,
+                                status=excluded.status,
+                                checkout_start_date=excluded.checkout_start_date,
+                                checkout_end_date=excluded.checkout_end_date
+                            ''',
+                            (item_id, idx, owner, "持ち出し中", start_date, end_date)
+                        )
+
+                    # 3. 指定枝番(branch_no)を譲渡済みに変更（ここを修正！）
+                    transfer_branch_nos = new_values.get("transfer_branch_nos", [])
+                    transfer_comment = new_values.get("transfer_comment", "")
+                    for branch_no in transfer_branch_nos:
+                        db.execute(
+                            "UPDATE child_item SET status=?, comment=?, checkout_end_date=?, owner=? WHERE item_id=? AND branch_no=?",
+                            ("譲渡", transfer_comment, now_date, '', item_id, branch_no)
+                        )
+
+                elif status == "入庫持ち出し申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
                     start_date = new_values.get("checkout_start_date", "")
                     end_date = new_values.get("checkout_end_date", "")
@@ -735,10 +806,8 @@ def approval():
                             ''',
                             (item_id, idx, owner, "持ち出し中", start_date, end_date)
                         )
-                # 入庫申請の場合
                 elif status == "入庫申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
-                # 返却申請の場合
                 elif status == "返却申請中":
                     db.execute(
                         "UPDATE item SET status=?, storage=? WHERE id=?",
@@ -752,21 +821,18 @@ def approval():
                         """,
                         ("返却済", new_values.get("return_date", ""), item_id, "破棄", "譲渡")
                     )
-                # 破棄・譲渡申請の場合
                 elif status == "破棄・譲渡申請中":
-                    dispose_type = new_values.get('dispose_type')   # ←ここが必要
+                    dispose_type = new_values.get('dispose_type')
                     target_child_branches = new_values.get('target_child_branches', [])
                     dispose_comment = new_values.get('dispose_comment', '')
 
-                    # ここでdispose_typeに応じて子アイテムのstatusを変更
                     new_status = "破棄" if dispose_type == "破棄" else "譲渡"
                     for target in target_child_branches:
                         cid = target["id"]
                         db.execute(
-                            "UPDATE child_item SET status=?, comment=? WHERE id=?",
-                            (new_status, dispose_comment, cid)
+                            "UPDATE child_item SET status=?, comment=?, checkout_end_date=?, owner=? WHERE id=?",
+                            (new_status, dispose_comment, now_date, '', cid)
                         )
-                    # item.statusは承認時に「持ち出し中」へ戻す
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
                 # item_applicationのstatusを承認に
@@ -783,8 +849,9 @@ def approval():
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     item_id, app_row['applicant'],
-                    "破棄申請" if status == "破棄・譲渡申請中" and dispose_type == "破棄"
-                    else "譲渡申請" if status == "破棄・譲渡申請中" and dispose_type == "譲渡"
+                    "入庫持ち出し譲渡申請" if status == "入庫持ち出し譲渡申請中"
+                    else "破棄申請" if status == "破棄・譲渡申請中" and new_values.get("dispose_type") == "破棄"
+                    else "譲渡申請" if status == "破棄・譲渡申請中" and new_values.get("dispose_type") == "譲渡"
                     else "入庫申請" if status == "入庫申請中"
                     else "入庫持ち出し申請" if status == "入庫持ち出し申請中"
                     else "持ち出し終了申請" if status == "返却申請中"

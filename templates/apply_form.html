@@ -94,6 +94,19 @@
                 </div>
                 <div id="owner-tables-area" style="margin-top:25px;"></div>
             </div>
+            <div id="with_transfer_area" style="display:none; margin-top:8px;">
+                <label class="form-label">
+                    <input type="checkbox" name="with_transfer" value="1" id="with_transfer_cb">
+                    譲渡申請も同時に行う
+                </label>
+                <div id="transfer-detail-area" style="display:none; margin-top:8px;">
+                    <div id="transfer-branch-tables"></div>
+                    <div class="form-field">
+                        <label class="form-label" for="transfer_comment">譲渡コメント</label>
+                        <textarea class="form-textarea" id="transfer_comment" name="transfer_comment"></textarea>
+                    </div>
+                </div>
+            </div>
             <!-- 申請コメント、承認者は常時表示 -->
             <div class="form-field">
                 <label class="form-label" for="comment">申請コメント</label>
@@ -146,27 +159,57 @@
             const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
             return lastDay.toISOString().slice(0, 10);
         }
+
         document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('start_date').value = getToday();
             document.getElementById('end_date').value = getThreeMonthLast();
-            // 管理者自動入力
             {% if g.user %}
                 document.getElementById('manager').value = "{{ g.user['username'] }}";
             {% endif %}
-            // チェックボックス初期化＆イベント
-            const cb = document.getElementById('with_checkout_cb');
-            const area = document.getElementById('checkout-area');
+
+            // 要素取得
+            const cb_checkout = document.getElementById('with_checkout_cb');
+            const area_checkout = document.getElementById('checkout-area');
+            const area_transfer = document.getElementById('with_transfer_area');
+            const cb_transfer = document.getElementById('with_transfer_cb');
+            const transferDetailArea = document.getElementById('transfer-detail-area');
+            const ownerTablesArea = document.getElementById('owner-tables-area');
+
             function toggleCheckoutArea() {
-                area.style.display = cb.checked ? "block" : "none";
-                if (cb.checked && typeof createOwnerTables === 'function') {
-                    createOwnerTables();
+                // 持ち出し申請欄表示
+                area_checkout.style.display = cb_checkout.checked ? "block" : "none";
+                // 譲渡申請親欄表示
+                area_transfer.style.display = cb_checkout.checked ? "block" : "none";
+                // 所有者テーブル生成・消去
+                if (cb_checkout.checked) {
+                    if (typeof createOwnerTables === 'function') createOwnerTables();
                 } else {
-                    document.getElementById('owner-tables-area').innerHTML = '';
+                    ownerTablesArea.innerHTML = '';
+                }
+                // 持ち出しOFFのとき譲渡関連もOFF
+                if (!cb_checkout.checked) {
+                    cb_transfer.checked = false;
+                    transferDetailArea.style.display = "none";
                 }
             }
-            cb.addEventListener('change', toggleCheckoutArea);
+            function toggleTransferDetail() {
+                transferDetailArea.style.display = cb_transfer.checked ? "block" : "none";
+                if (cb_transfer.checked) {
+                    createTransferBranchTables();
+                } else {
+                    document.getElementById('transfer-branch-tables').innerHTML = '';
+                }
+            }
+
+            // イベントセット
+            cb_checkout.addEventListener('change', toggleCheckoutArea);
+            cb_transfer.addEventListener('change', toggleTransferDetail);
+
+            // 初期化
             toggleCheckoutArea();
+            toggleTransferDetail();
         });
+
         // 申請時チェック
         function checkAndSubmit() {
             var allChecked = true;
@@ -175,9 +218,25 @@
                 alert("全ての数量チェックにチェックしてください");
                 return false;
             }
+            // 持ち出し＋譲渡同時申請時のバリデーション
+            var cb_checkout = document.getElementById('with_checkout_cb');
+            var cb_transfer = document.getElementById('with_transfer_cb');
+            if (cb_checkout.checked && cb_transfer.checked) {
+                var checkedBranches = document.querySelectorAll('input[name="transfer_branch_ids"]:checked');
+                if (checkedBranches.length == 0) {
+                    alert("譲渡する枝番を1つ以上選択してください");
+                    return false;
+                }
+                var transferComment = document.getElementById('transfer_comment').value.trim();
+                if (!transferComment) {
+                    alert("譲渡コメントを入力してください");
+                    return false;
+                }
+            }
             alert("申請が完了しました（本来はメール送信）");
             return true;
         }
+
         // 所有者テーブル生成（持ち出し申請ON時のみ呼ばれる）
         function createOwnerTables() {
             let checked = document.getElementById('with_checkout_cb').checked;
@@ -228,6 +287,45 @@
                     input.value = td.innerText.trim();
                 });
             });
+        }
+
+        // 譲渡対象枝番テーブル生成（持ち出し＋譲渡申請ON時のみ呼ばれる）
+        function createTransferBranchTables() {
+            let area = document.getElementById('transfer-branch-tables');
+            area.innerHTML = '';
+            let items = [];
+            {% for item in items %}
+                items.push({
+                    id: "{{ item['id'] }}",
+                    num_of_samples: parseInt("{{ item['num_of_samples']|default(1) }}"),
+                    product_name: "{{ item['product_name']|default('')|e }}"
+                });
+            {% endfor %}
+
+            // 各アイテムごとに枝番選択テーブルを出す
+            let allHtml = "";
+            for (let it of items) {
+                let t = `<div style="margin-bottom:18px;"><b>ID ${it.id}（${it.product_name}） 譲渡する枝番を選択</b>
+                    <table style="border-collapse:collapse;">
+                    <tr>
+                        <th style="border:1px solid #aaa;padding:5px 10px;">選択</th>
+                        <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
+                    </tr>`;
+                let n = it.num_of_samples;
+                if (!n || n <= 0) n = 1;
+                for (let i = 1; i <= n; i++) {
+                    // 譲渡する枝番は子item（branch_no）扱いとする
+                    t += `<tr>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">
+                        <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${i}">
+                    </td>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${i}</td>
+                    </tr>`;
+                }
+                t += `</table></div>`;
+                allHtml += t;
+            }
+            area.innerHTML = allHtml;
         }
     </script>
 </body>
