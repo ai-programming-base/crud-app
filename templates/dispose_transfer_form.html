@@ -47,6 +47,60 @@
             var boxes = document.querySelectorAll('.child-checkbox-' + parentId);
             boxes.forEach(function(b) { b.checked = checked; });
         }
+        
+        // 承認者欄：初期値セット＆全マネージャのプルダウン選択
+        function setupApproverSelector(approverInputId, approverList, defaultApprover) {
+            var approverInput = document.getElementById(approverInputId);
+            approverInput.value = defaultApprover || "";
+            approverInput.readOnly = false;
+            approverInput.style.cursor = "pointer";
+
+            var dropdown = document.createElement('div');
+            dropdown.style.position = 'absolute';
+            dropdown.style.background = '#fff';
+            dropdown.style.border = '1px solid #bbb';
+            dropdown.style.borderRadius = '6px';
+            dropdown.style.boxShadow = '0 2px 8px #bbb8';
+            dropdown.style.zIndex = '99';
+            dropdown.style.display = 'none';
+            dropdown.style.minWidth = '220px';
+
+            approverInput.parentNode.style.position = 'relative';
+            approverInput.parentNode.appendChild(dropdown);
+
+            function showDropdown() {
+                dropdown.innerHTML = '';
+                approverList.forEach(function(u) {
+                    var item = document.createElement('div');
+                    item.textContent = u;
+                    item.style.padding = "6px 16px";
+                    item.style.cursor = "pointer";
+                    item.onmouseover = function() { item.style.background = "#e3f2fd"; };
+                    item.onmouseout  = function() { item.style.background = "#fff"; };
+                    item.onclick = function() {
+                        approverInput.value = u;
+                        dropdown.style.display = "none";
+                    };
+                    dropdown.appendChild(item);
+                });
+                dropdown.style.display = 'block';
+            }
+            approverInput.addEventListener('focus', showDropdown);
+            approverInput.addEventListener('click', showDropdown);
+
+            document.addEventListener('click', function(e) {
+                if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function(){
+            // Pythonから受け取ったリスト・初期値をJS変数にセット
+            var approverList = {{ approver_list|tojson|safe }};
+            var defaultApprover = "{{ approver_default|e }}";
+            setupApproverSelector("approver", approverList, defaultApprover);
+        });
     </script>
 </head>
 <body>

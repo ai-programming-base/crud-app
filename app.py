@@ -239,6 +239,30 @@ def select_field_config():
     return render_template("select_field_config.html", fields=fields, select_fields=select_fields)
 
 
+def get_managers_by_department(department=None, db=None):
+    """
+    部門指定で manager 権限ユーザー一覧を返す。
+    department=None で全manager返す
+    戻り値: [{'username': ..., 'realname': ..., 'department': ...}, ...]
+    """
+    if db is None:
+        db = get_db()
+    query = """
+        SELECT u.username, u.realname, u.department
+        FROM users u
+        JOIN user_roles ur ON u.id = ur.user_id
+        JOIN roles r ON ur.role_id = r.id
+        WHERE r.name = 'manager'
+    """
+    params = []
+    if department:
+        query += " AND u.department = ?"
+        params.append(department)
+    query += " ORDER BY u.username"
+    rows = db.execute(query, params).fetchall()
+    return [row['username'] for row in rows]
+
+
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin', 'manager')
@@ -512,8 +536,16 @@ def apply_request():
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
         items = [dict(row) for row in items]
-        return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
-
+        department = g.user['department']
+        managers_same_dept = get_managers_by_department(department, db)
+        all_managers = get_managers_by_department(None, db)
+        return render_template(
+            'apply_form.html',
+            items=items, fields=INDEX_FIELDS,
+            approver_default=managers_same_dept[0] if managers_same_dept else '',
+            approver_list=all_managers
+        )
+    
     # 申請フォーム送信（action=submit: 必須項目チェック＆申請内容をitem_applicationに登録、item.statusのみ即更新）
     if (request.method == 'GET' and request.args.get('action') == 'submit') or \
        (request.method == 'POST' and request.form.get('action') == 'submit'):
@@ -557,7 +589,15 @@ def apply_request():
             items = [dict(row) for row in items]
             for msg in errors:
                 flash(msg)
-            return render_template('apply_form.html', items=items, fields=INDEX_FIELDS)
+            department = g.user['department']
+            managers_same_dept = get_managers_by_department(department, db)
+            all_managers = get_managers_by_department(None, db)
+            return render_template(
+                'apply_form.html',
+                items=items, fields=INDEX_FIELDS,
+                approver_default=managers_same_dept[0] if managers_same_dept else '',
+                approver_list=all_managers
+            )
 
         # ▼ ステータス分岐
         if with_checkout and with_transfer:
@@ -670,8 +710,16 @@ def return_request():
                 item['sample_count'] = cnt
             item_list.append(item)
 
-        return render_template('return_form.html', items=item_list, fields=INDEX_FIELDS)
-    
+        department = g.user['department']
+        managers_same_dept = get_managers_by_department(department, db)
+        all_managers = get_managers_by_department(None, db)
+        return render_template(
+            'return_form.html',
+            items=item_list, fields=INDEX_FIELDS,
+            approver_default=managers_same_dept[0] if managers_same_dept else '',
+            approver_list=all_managers
+        )
+
     # 申請フォームからの送信時（GET, action=submit）: item_applicationへ申請内容登録
     if request.args.get('action') == 'submit':
         item_ids = request.args.getlist('item_id')
@@ -1128,11 +1176,14 @@ def dispose_transfer_request():
             ).fetchall()
             for msg in errors:
                 flash(msg)
+            department = g.user['department']
+            managers_same_dept = get_managers_by_department(department, db)
+            all_managers = get_managers_by_department(None, db)
             return render_template(
                 'dispose_transfer_form.html',
-                items=item_list,
-                child_items=child_items,
-                fields=INDEX_FIELDS
+                items=item_list, child_items=child_items, fields=INDEX_FIELDS,
+                approver_default=managers_same_dept[0] if managers_same_dept else '',
+                approver_list=all_managers
             )
 
         applicant = g.user['username']
@@ -1220,11 +1271,15 @@ def dispose_transfer_request():
             f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
             item_ids
         ).fetchall()
+
+        department = g.user['department']
+        managers_same_dept = get_managers_by_department(department, db)
+        all_managers = get_managers_by_department(None, db)
         return render_template(
             'dispose_transfer_form.html',
-            items=item_list,
-            child_items=child_items,
-            fields=INDEX_FIELDS
+            items=item_list, child_items=child_items, fields=INDEX_FIELDS,
+            approver_default=managers_same_dept[0] if managers_same_dept else '',
+            approver_list=all_managers
         )
 
     return redirect(url_for('index'))
