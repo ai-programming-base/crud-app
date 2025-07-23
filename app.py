@@ -6,6 +6,7 @@ from functools import wraps
 import json
 from datetime import datetime
 
+from auth import authenticate
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
@@ -196,13 +197,29 @@ def login():
     if request.method == 'POST':
         username = request.form['username'].strip()
         password = request.form['password']
-        db = get_db()
-        user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-        if user and check_password_hash(user['password'], password):
-            session['user_id'] = user['id']
+        auth_result = authenticate(username, password)
+        if auth_result.get('result'):
+            db = get_db()
+            user = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if user:
+                # パスワードは一切触らず、他情報だけ更新
+                db.execute("""
+                    UPDATE users SET email=?, department=?, realname=? WHERE username=?
+                """, (auth_result['email'], auth_result['department'], auth_result['realname'], username))
+                db.commit()
+                user_id = user['id']
+            else:
+                # 新規ユーザーの場合もpasswordは登録しない
+                db.execute("""
+                    INSERT INTO users (username, email, department, realname)
+                    VALUES (?, ?, ?, ?)
+                """, (username, auth_result['email'], auth_result['department'], auth_result['realname']))
+                user_id = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()['id']
+                db.commit()
+            session['user_id'] = user_id
             return redirect(url_for('menu'))
         else:
-            flash("ユーザー名またはパスワードが違います")
+            flash(auth_result.get('reason') or "ログインに失敗しました")
     return render_template('login.html')
 
 @app.route('/logout')
