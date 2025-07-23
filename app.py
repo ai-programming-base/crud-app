@@ -1454,6 +1454,39 @@ def inventory_history(item_id):
     return render_template('inventory_history.html', rows=rows, item=item)
 
 
+@app.route('/print_labels', methods=['GET', 'POST'])
+@login_required
+def print_labels():
+    # 選択されたIDのリストを取得（例: POSTでもGETでもOKなように）
+    if request.method == 'POST':
+        ids = request.form.getlist('selected_ids')
+    else:
+        ids = request.args.get('ids', '').split(',')
+
+    ids = [int(i) for i in ids if i.isdigit()]
+    if not ids:
+        flash("ラベル印刷するアイテムを選択してください。")
+        return redirect(url_for('index'))
+
+    db = get_db()
+    items = db.execute(
+        f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(ids))})",
+        ids
+    ).fetchall()
+    items = [dict(row) for row in items]
+    items_sorted = sorted(items, key=lambda x: x['id'])
+
+    # fields.json読み込み
+    FIELDS_PATH = os.path.join(os.path.dirname(__file__), 'fields.json')
+    with open(FIELDS_PATH, encoding='utf-8') as f:
+        fields = json.load(f)
+
+    return render_template(
+        'print_labels.html',
+        items=items_sorted,
+        fields=fields
+    )
+
 if __name__ == '__main__':
     init_db()
     init_user_db()

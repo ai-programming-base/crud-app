@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ラベル印刷</title>
+    <style>
+        @media print {
+            body {
+                margin: 15mm 10mm 15mm 10mm;
+                font-family: 'Yu Gothic', 'Meiryo', sans-serif;
+                color: #000;
+                background: #fff !important;
+                -webkit-print-color-adjust: exact;
+            }
+            .label-page {
+                page-break-after: always;
+                width: 180mm;
+                margin: 0 auto 0 auto;
+            }
+        }
+        body {
+            background: #fff;
+            color: #000;
+            font-family: 'Yu Gothic', 'Meiryo', sans-serif;
+            margin: 0;
+        }
+        .label-page {
+            width: 180mm;
+            margin: 24px auto 40px auto;
+            padding: 0 12mm;
+            border: 1px solid #111;
+            border-radius: 0;
+            background: #fff;
+        }
+        .label-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 1px solid #333;
+            padding-bottom: 6px;
+            margin-bottom: 16px;
+        }
+        .label-title {
+            font-size: 2.0em;
+            font-weight: bold;
+            margin: 0;
+            letter-spacing: 0.05em;
+        }
+        .label-id {
+            font-size: 1.1em;
+            font-weight: normal;
+            margin-left: 16px;
+            white-space: nowrap;
+        }
+        .content-table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 12px 0 8px 0;
+            font-size: 1.13em;
+        }
+        .content-table td {
+            border: 1px solid #222;
+            padding: 5px 14px;
+            min-width: 38mm;
+            max-width: 75mm;
+            text-align: left;
+        }
+        .label-comment {
+            margin-top: 18px;
+            font-size: 1.03em;
+            color: #000;
+            font-style: italic;
+            border-top: 1px dotted #222;
+            padding-top: 6px;
+        }
+        .all-list-title {
+            font-size: 1em;
+            margin: 35px 0 3px 0;
+            font-weight: bold;
+            border-bottom: 1px solid #333;
+        }
+        .all-list-table {
+            font-size: 0.93em;
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 0;
+        }
+        .all-list-table th,
+        .all-list-table td {
+            border: 1px solid #333;
+            padding: 3px 7px;
+            text-align: left;
+            font-weight: normal;
+        }
+        .all-list-table th {
+            background: #fff;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    {% set ids = items|map(attribute='id')|list %}
+    {% set id_min = ids|min %}
+    {% set id_max = ids|max %}
+    {% set first_item = items[0] %}
+    {% set title_field = fields|selectattr('print_label', 'equalto', 'title')|list|first %}
+    {% set comment_field = fields|selectattr('print_label', 'equalto', 'comment')|list|first %}
+    {% set top_fields = fields|selectattr('print_label', 'in', ['top','top_all','both','both_all'])|list %}
+    {% set bottom_fields = fields|selectattr('print_label', 'in', ['bottom','both','both_all'])|list %}
+
+    <div class="label-page">
+        <div class="label-header">
+            <div class="label-title">
+                {% if title_field %}
+                    {{ title_field.name }} : {{ first_item[title_field.key] }}
+                {% else %}
+                    ラベル
+                {% endif %}
+            </div>
+            <div class="label-id">
+                管理No. {{ id_min }}{% if id_max != id_min %}~{{ id_max }}{% endif %}
+            </div>
+        </div>
+
+        {# 上の表（2列ずつ横並び） #}
+        <table class="content-table">
+            <tbody>
+            {% for i in range(0, top_fields|length, 2) %}
+                <tr>
+                    {% for j in range(2) %}
+                        {% set f = top_fields[i+j] if (i+j) < top_fields|length else None %}
+                        {% if f %}
+                            <td>{{ f.name }}</td>
+                            <td>
+                                {% if f.print_label in ['top', 'both'] %}
+                                    {{ first_item[f.key] }}
+                                {% elif f.print_label in ['top_all', 'both_all'] %}
+                                    {{ items|map(attribute=f.key)|join(' ') }}
+                                {% endif %}
+                            </td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {# コメント欄 #}
+        {% if comment_field and first_item[comment_field.key] %}
+            <div class="label-comment">
+                &lt;&lt;&lt;コメント&gt;&gt;&gt;<br>
+                {{ first_item[comment_field.key] }}
+            </div>
+        {% endif %}
+
+        {# 一覧表 #}
+        <div class="all-list-title">一覧</div>
+        <table class="all-list-table">
+            <tr>
+                <th>管理No.</th>
+                {% if title_field %}
+                    <th>{{ title_field.name }}</th>
+                {% endif %}
+                {% for f in bottom_fields %}
+                    <th>{{ f.name }}</th>
+                {% endfor %}
+                {% if comment_field %}
+                    <th>{{ comment_field.name }}</th>
+                {% endif %}
+            </tr>
+            {% for item in items %}
+            <tr>
+                <td>{{ item['id'] }}</td>
+                {% if title_field %}
+                    <td>{{ item[title_field.key] }}</td>
+                {% endif %}
+                {% for f in bottom_fields %}
+                    <td>{{ item[f.key] }}</td>
+                {% endfor %}
+                {% if comment_field %}
+                    <td>{{ item[comment_field.key] }}</td>
+                {% endif %}
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>
