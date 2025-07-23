@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 
 from auth import authenticate
+from send_mail import send_mail
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
@@ -681,7 +682,17 @@ def apply_request():
             ))
 
         db.commit()
-        flash("申請内容を保存しました。承認待ちです。")
+
+        # メール通知
+        to=""
+        subject=""
+        body=""
+        result = send_mail(to=to, subject=subject, body=body)
+        if result:
+            flash(f"申請内容を保存しました。承認待ちです。承認者にメールで連絡しました。")
+        else:
+            flash(f"申請内容を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+
         if request.form.get('from_menu') or request.args.get('from_menu'):
             return redirect(url_for('menu'))
         else:
@@ -772,7 +783,17 @@ def return_request():
                 id, json.dumps(new_values, ensure_ascii=False), applicant, applicant_comment, approver, "申請中", now_str, original_status
             ))
         db.commit()
-        flash("申請内容を保存しました。承認待ちです。")
+
+        # メール通知
+        to=""
+        subject=""
+        body=""
+        result = send_mail(to=to, subject=subject, body=body)
+        if result:
+            flash(f"申請内容を保存しました。承認待ちです。承認者にメールで連絡しました。")
+        else:
+            flash(f"申請内容を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+
         if request.args.get('from_menu') or request.form.get('from_menu'):
             return redirect(url_for('menu'))
         else:
@@ -847,7 +868,7 @@ def approval():
                     )
 
                 if status == "入庫持ち出し譲渡申請中":
-                    # 1. itemテーブル: ステータス"入庫"→"持ち出し中"（可読性のため2段階でもOK。ここでは一気に"持ち出し中"に）
+                    # 1. itemテーブル: ステータス"入庫"→"持ち出し中"
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
                     start_date = new_values.get("checkout_start_date", "")
@@ -875,7 +896,7 @@ def approval():
                             (item_id, idx, owner, "持ち出し中", start_date, end_date)
                         )
 
-                    # 3. 指定枝番(branch_no)を譲渡済みに変更（ここを修正！）
+                    # 3. 指定枝番(branch_no)を譲渡済みに変更
                     transfer_branch_nos = new_values.get("transfer_branch_nos", [])
                     transfer_comment = new_values.get("transfer_comment", "")
                     for branch_no in transfer_branch_nos:
@@ -962,6 +983,16 @@ def approval():
                     "承認", now_str, comment
                 ))
 
+                # メール通知
+                to=""
+                subject=""
+                body=""
+                result = send_mail(to=to, subject=subject, body=body)
+                if result:
+                    flash(f"承認しました。申請者にメールで連絡しました。")
+                else:
+                    flash(f"承認しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+
             elif action == 'reject':
                 # original_statusは必ず申請テーブルに入っている前提
                 original_status = app_row['original_status']
@@ -976,6 +1007,16 @@ def approval():
                     (comment, now_str, "差し戻し", app_id)
                 )
                 # 必要に応じて履歴登録など
+
+                # メール通知
+                to=""
+                subject=""
+                body=""
+                result = send_mail(to=to, subject=subject, body=body)
+                if result:
+                    flash(f"差し戻しました。申請者にメールで連絡しました。")
+                else:
+                    flash(f"差し戻しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
         db.commit()
         # 完了後は空リスト＋メッセージ表示
@@ -1030,10 +1071,18 @@ def bulk_manager_change():
         # 一括更新
         db.executemany("UPDATE item SET sample_manager=? WHERE id=?", [(new_manager, item['id']) for item in items])
         db.commit()
-        # 仮メール通知（ダイアログ表示のみ）
+
+        # メール通知
         old_managers = set(item['sample_manager'] for item in items)
-        # ここで実際はメール送信処理
-        flash(f"管理者を「{new_manager}」に一括変更しました。旧管理者・新管理者・承認者にメールで連絡しました（ダイアログ仮表示）。")
+        to=""
+        subject=""
+        body=""
+        result = send_mail(to=to, subject=subject, body=body)
+        if result:
+            flash(f"管理者を「{new_manager}」に一括変更しました。旧管理者・新管理者・承認者にメールで連絡しました。")
+        else:
+            flash(f"管理者を「{new_manager}」に一括変更しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+
         if request.form.get('from_menu') or request.args.get('from_menu'):
             return redirect(url_for('menu'))
         else:
@@ -1127,7 +1176,17 @@ def change_owner():
                 now_str, "", "承認不要", now_str, ""
             ))
         db.commit()
-        flash("所有者を変更しました。管理者・責任者・自分にメール送信しました（仮実装）。")
+
+        # メール通知
+        to=""
+        subject=""
+        body=""
+        result = send_mail(to=to, subject=subject, body=body)
+        if result:
+            flash(f"所有者を変更しました。所有者・管理者・承認者にメールで連絡しました。")
+        else:
+            flash(f"所有者を変更しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+
     else:
         flash("変更はありませんでした。")
     return redirect(url_for('index'))
@@ -1251,7 +1310,16 @@ def dispose_transfer_request():
             db.execute("UPDATE item SET status=? WHERE id=?", ("破棄・譲渡申請中", item_id))
         db.commit()
 
-        flash("破棄・譲渡申請を保存しました。承認待ちです。")
+        # メール通知
+        to=""
+        subject=""
+        body=""
+        result = send_mail(to=to, subject=subject, body=body)
+        if result:
+            flash(f"破棄・譲渡申請を保存しました。承認待ちです。承認者にメールで連絡しました。")
+        else:
+            flash(f"破棄・譲渡申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+
         if request.form.get('from_menu'):
             return redirect(url_for('menu'))
         else:
