@@ -266,6 +266,13 @@
             form.submit();
         }
 
+        function submitCheckoutRequest() {
+            var form = document.getElementById('main-form');
+            form.action = "{{ url_for('checkout_request') }}";
+            form.method = "POST";
+            form.submit();
+        }
+
         function showChildItems() {
             let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
             if (checked.length < 1) {
@@ -456,6 +463,9 @@
             {% endif %}
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
                 <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
+                <button type="button" class="main-btn" onclick="submitCheckoutRequest()">持ち出し申請</button>
             {% endif %}
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
                 <button type="button" class="main-btn" onclick="submitReturnRequest()">持ち出し終了申請</button>

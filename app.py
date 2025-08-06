@@ -712,6 +712,160 @@ def apply_request():
     return redirect(url_for('index'))
 
 
+@app.route('/checkout_request', methods=['POST', 'GET'])
+@login_required
+@roles_required('admin', 'manager', 'proper')
+def checkout_request():
+    db = get_db()
+
+    # 申請画面表示（index→POST:選択済みID受取→フォーム表示）
+    if request.method == 'POST' and not request.form.get('action'):
+        item_ids = request.form.getlist('selected_ids')
+        if not item_ids:
+            flash("申請対象を選択してください")
+            return redirect(url_for('index'))
+        items = db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        ).fetchall()
+        items = [dict(row) for row in items]
+        department = g.user['department']
+        managers_same_dept = get_managers_by_department(department, db)
+        all_managers = get_managers_by_department(None, db)
+        return render_template(
+            'checkout_form.html',
+            items=items, fields=INDEX_FIELDS,
+            approver_default=managers_same_dept[0] if managers_same_dept else '',
+            approver_list=all_managers
+        )
+
+    # 申請フォーム送信（action=submit: 必須項目チェック＆申請内容登録、item.statusのみ即更新）
+    if (request.method == 'GET' and request.args.get('action') == 'submit') or \
+       (request.method == 'POST' and request.form.get('action') == 'submit'):
+        form = request.form if request.method == 'POST' else request.args
+
+        item_ids = form.getlist('item_id')
+        if not item_ids:
+            flash("申請対象が不正です")
+            return redirect(url_for('index'))
+
+        # 必須入力チェック
+        manager = form.get('manager', '').strip()
+        comment = form.get('comment', '').strip()
+        approver = form.get('approver', '').strip()
+        qty_checked = form.getlist('qty_checked')
+
+        # ▼ 譲渡申請情報の取得
+        with_transfer = form.get("with_transfer") == "1"
+        transfer_branch_ids = form.getlist("transfer_branch_ids") if with_transfer else []
+        transfer_comment = form.get("transfer_comment", "") if with_transfer else ""
+
+        errors = []
+        if not manager:
+            errors.append("管理者を入力してください。")
+        if not approver:
+            errors.append("承認者を入力してください。")
+        if len(qty_checked) != len(item_ids):
+            errors.append("すべての数量チェックをしてください。")
+        # ▼ 譲渡申請ONなら枝番必須
+        if with_transfer:
+            if not transfer_branch_ids:
+                errors.append("譲渡する枝番を選択してください。")
+            if not transfer_comment.strip():
+                errors.append("譲渡コメントを入力してください。")
+
+        if errors:
+            items = db.execute(
+                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+            ).fetchall()
+            items = [dict(row) for row in items]
+            department = g.user['department']
+            managers_same_dept = get_managers_by_department(department, db)
+            all_managers = get_managers_by_department(None, db)
+            for msg in errors:
+                flash(msg)
+            return render_template(
+                'checkout_form.html',
+                items=items, fields=INDEX_FIELDS,
+                approver_default=managers_same_dept[0] if managers_same_dept else '',
+                approver_list=all_managers
+            )
+
+        # ▼ ステータス分岐
+        if with_transfer:
+            new_status = "持ち出し譲渡申請中"
+        else:
+            new_status = "持ち出し申請中"
+
+        applicant = g.user['username']
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        start_date = form.get('start_date', '')
+        end_date = form.get('end_date', '')
+
+        # 持ち出し所有者欄
+        owner_lists = {}
+        for id in item_ids:
+            owner_lists[str(id)] = form.getlist(f'owner_list_{id}')
+
+        for id in item_ids:
+            # item_applicationに申請内容を登録
+            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+            original_status = item['status']
+
+            # itemのstatusのみ即時変更
+            db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
+
+            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+            new_values = dict(item)
+            new_values['sample_manager'] = manager
+            if with_transfer:
+                new_values['status'] = "持ち出し譲渡申請中"
+                new_values['checkout_start_date'] = start_date
+                new_values['checkout_end_date'] = end_date
+                new_values['owner_list'] = owner_lists.get(str(id), [])
+                transfer_ids_this = []
+                for t in transfer_branch_ids:
+                    try:
+                        tid, branch_no = t.split("_")
+                        if str(tid) == str(id):
+                            transfer_ids_this.append(int(branch_no))
+                    except Exception:
+                        continue
+                new_values['transfer_branch_nos'] = transfer_ids_this
+                new_values['transfer_comment'] = transfer_comment
+            else:
+                new_values['status'] = "持ち出し申請中"
+                new_values['checkout_start_date'] = start_date
+                new_values['checkout_end_date'] = end_date
+                new_values['owner_list'] = owner_lists.get(str(id), [])
+
+            db.execute('''
+                INSERT INTO item_application
+                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime, original_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                id, json.dumps(new_values, ensure_ascii=False), applicant, comment, approver, "申請中", now_str, original_status
+            ))
+
+        db.commit()
+
+        # メール通知
+        to=""
+        subject=""
+        body=""
+        result = send_mail(to=to, subject=subject, body=body)
+        if result:
+            flash(f"持ち出し申請を保存しました。承認待ちです。承認者にメールで連絡しました。")
+        else:
+            flash(f"持ち出し申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+
+        if request.form.get('from_menu') or request.args.get('from_menu'):
+            return redirect(url_for('menu'))
+        else:
+            return redirect(url_for('index'))
+
+    return redirect(url_for('index'))
+
+
 @app.route('/return_request', methods=['POST', 'GET'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
@@ -961,6 +1115,48 @@ def approval():
                 elif status == "入庫申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
 
+                elif status in ("持ち出し申請中", "持ち出し譲渡申請中"):
+
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
+                    start_date = new_values.get("checkout_start_date", "")
+                    end_date = new_values.get("checkout_end_date", "")
+                    owners = new_values.get("owner_list", [])
+                    if not owners:
+                        num_of_samples = int(new_values.get("num_of_samples", 1))
+                        owner = new_values.get("sample_manager", "")
+                        owners = [owner] * num_of_samples
+                    for idx, owner in enumerate(owners, 1):
+                        child_item = db.execute(
+                            "SELECT * FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
+                        ).fetchone()
+                        if not child_item:
+                            db.execute(
+                                "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
+                                (item_id, idx, owner, "持ち出し中", "")
+                            )
+                            child_item_id = db.execute(
+                                "SELECT id FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
+                            ).fetchone()["id"]
+                        else:
+                            child_item_id = child_item["id"]
+                            db.execute(
+                                "UPDATE child_item SET owner=?, status=? WHERE id=?",
+                                (owner, "持ち出し中", child_item_id)
+                            )
+                        db.execute(
+                            "INSERT INTO checkout_history (child_item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
+                            (child_item_id, start_date, end_date)
+                        )
+                    # 譲渡申請時の譲渡済処理
+                    if status == "持ち出し譲渡申請中":
+                        transfer_branch_nos = new_values.get("transfer_branch_nos", [])
+                        transfer_comment = new_values.get("transfer_comment", "")
+                        for branch_no in transfer_branch_nos:
+                            db.execute(
+                                "UPDATE child_item SET status=?, comment=?, owner=? WHERE item_id=? AND branch_no=?",
+                                ("譲渡", transfer_comment, '', item_id, branch_no)
+                            )
+
                 elif status == "返却申請中":
                     db.execute(
                         "UPDATE item SET status=?, storage=? WHERE id=?",
@@ -1006,10 +1202,12 @@ def approval():
                 ''', (
                     item_id, app_row['applicant'],
                     "入庫持ち出し譲渡申請" if status == "入庫持ち出し譲渡申請中"
+                    else "持ち出し譲渡申請" if status == "持ち出し譲渡申請中"
                     else "破棄申請" if status == "破棄・譲渡申請中" and new_values.get("dispose_type") == "破棄"
                     else "譲渡申請" if status == "破棄・譲渡申請中" and new_values.get("dispose_type") == "譲渡"
                     else "入庫申請" if status == "入庫申請中"
                     else "入庫持ち出し申請" if status == "入庫持ち出し申請中"
+                    else "持ち出し申請" if status == "持ち出し申請中"
                     else "持ち出し終了申請" if status == "返却申請中"
                     else (app_row['new_values'] or status or ""),
                     app_row['applicant_comment'], app_row['application_datetime'], app_row['approver'],
