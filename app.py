@@ -99,10 +99,21 @@ def init_child_item_db():
                 branch_no INTEGER NOT NULL,
                 owner TEXT NOT NULL,
                 status TEXT NOT NULL,
-                checkout_start_date TEXT,
-                checkout_end_date TEXT,
                 comment TEXT,
                 UNIQUE(item_id, branch_no)
+            )
+        ''')
+        db.commit()
+        
+def init_checkout_history_db():
+    with get_db() as db:
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS checkout_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                child_item_id INTEGER NOT NULL,
+                checkout_start_date TEXT NOT NULL,
+                checkout_end_date TEXT NOT NULL,
+                FOREIGN KEY(child_item_id) REFERENCES child_item(id)
             )
         ''')
         db.commit()
@@ -868,7 +879,6 @@ def approval():
                     )
 
                 if status == "入庫持ち出し譲渡申請中":
-                    # 1. itemテーブル: ステータス"入庫"→"持ち出し中"
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
                     start_date = new_values.get("checkout_start_date", "")
@@ -879,21 +889,30 @@ def approval():
                         owner = new_values.get("sample_manager", "")
                         owners = [owner] * num_of_samples
 
-                    # 2. child_item（持ち出し分）を「持ち出し中」で作成または更新
+                    # child_itemの作成または更新（ownerとstatusだけ）
                     for idx, owner in enumerate(owners, 1):
+                        child_item = db.execute(
+                            "SELECT * FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
+                        ).fetchone()
+                        if not child_item:
+                            db.execute(
+                                "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
+                                (item_id, idx, owner, "持ち出し中", "")
+                            )
+                            child_item_id = db.execute(
+                                "SELECT id FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
+                            ).fetchone()["id"]
+                        else:
+                            child_item_id = child_item["id"]
+                            db.execute(
+                                "UPDATE child_item SET owner=?, status=? WHERE id=?",
+                                (owner, "持ち出し中", child_item_id)
+                            )
+
+                        # checkout_history に履歴を追加
                         db.execute(
-                            '''
-                            INSERT INTO child_item
-                                (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(item_id, branch_no)
-                            DO UPDATE SET
-                                owner=excluded.owner,
-                                status=excluded.status,
-                                checkout_start_date=excluded.checkout_start_date,
-                                checkout_end_date=excluded.checkout_end_date
-                            ''',
-                            (item_id, idx, owner, "持ち出し中", start_date, end_date)
+                            "INSERT INTO checkout_history (child_item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
+                            (child_item_id, start_date, end_date)
                         )
 
                     # 3. 指定枝番(branch_no)を譲渡済みに変更
@@ -901,8 +920,8 @@ def approval():
                     transfer_comment = new_values.get("transfer_comment", "")
                     for branch_no in transfer_branch_nos:
                         db.execute(
-                            "UPDATE child_item SET status=?, comment=?, checkout_end_date=?, owner=? WHERE item_id=? AND branch_no=?",
-                            ("譲渡", transfer_comment, now_date, '', item_id, branch_no)
+                            "UPDATE child_item SET status=?, comment=?, owner=? WHERE item_id=? AND branch_no=?",
+                            ("譲渡", transfer_comment, '', item_id, branch_no)
                         )
 
                 elif status == "入庫持ち出し申請中":
@@ -915,35 +934,49 @@ def approval():
                         owner = new_values.get("sample_manager", "")
                         owners = [owner] * num_of_samples
                     for idx, owner in enumerate(owners, 1):
+                        child_item = db.execute(
+                            "SELECT * FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
+                        ).fetchone()
+                        if not child_item:
+                            db.execute(
+                                "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
+                                (item_id, idx, owner, "持ち出し中", "")
+                            )
+                            child_item_id = db.execute(
+                                "SELECT id FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
+                            ).fetchone()["id"]
+                        else:
+                            child_item_id = child_item["id"]
+                            db.execute(
+                                "UPDATE child_item SET owner=?, status=? WHERE id=?",
+                                (owner, "持ち出し中", child_item_id)
+                            )
+
+                        # checkout_history に履歴を追加
                         db.execute(
-                            '''
-                            INSERT INTO child_item
-                                (item_id, branch_no, owner, status, checkout_start_date, checkout_end_date)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            ON CONFLICT(item_id, branch_no)
-                            DO UPDATE SET
-                                owner=excluded.owner,
-                                status=excluded.status,
-                                checkout_start_date=excluded.checkout_start_date,
-                                checkout_end_date=excluded.checkout_end_date
-                            ''',
-                            (item_id, idx, owner, "持ち出し中", start_date, end_date)
+                            "INSERT INTO checkout_history (child_item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
+                            (child_item_id, start_date, end_date)
                         )
+
                 elif status == "入庫申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
+
                 elif status == "返却申請中":
                     db.execute(
                         "UPDATE item SET status=?, storage=? WHERE id=?",
                         ("入庫", new_values.get("storage", ""), item_id)
                     )
+                    # 返却対象の child_item を「返却済」に
                     db.execute(
                         """
                         UPDATE child_item
-                        SET status=?, checkout_end_date=?
+                        SET status=?
                         WHERE item_id=? AND status NOT IN (?, ?)
                         """,
-                        ("返却済", new_values.get("return_date", ""), item_id, "破棄", "譲渡")
+                        ("返却済", item_id, "破棄", "譲渡")
                     )
+                    # 履歴にも返却を追加する場合はこちらで処理（例: checkout_end_date記録など）
+
                 elif status == "破棄・譲渡申請中":
                     dispose_type = new_values.get('dispose_type')
                     target_child_branches = new_values.get('target_child_branches', [])
@@ -953,8 +986,8 @@ def approval():
                     for target in target_child_branches:
                         cid = target["id"]
                         db.execute(
-                            "UPDATE child_item SET status=?, comment=?, checkout_end_date=?, owner=? WHERE id=?",
-                            (new_status, dispose_comment, now_date, '', cid)
+                            "UPDATE child_item SET status=?, comment=?, owner=? WHERE id=?",
+                            (new_status, dispose_comment, '', cid)
                         )
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
@@ -994,7 +1027,6 @@ def approval():
                     flash(f"承認しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
             elif action == 'reject':
-                # original_statusは必ず申請テーブルに入っている前提
                 original_status = app_row['original_status']
                 if original_status:
                     db.execute("UPDATE item SET status=? WHERE id=?", (original_status, item_id))
@@ -1042,13 +1074,40 @@ def child_items_multiple():
         flash("通し番号が指定されていません")
         return redirect(url_for('index'))
     db = get_db()
-    # 子アイテム取得
-    q = f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(id_list))}) ORDER BY item_id, branch_no"
+    # 子アイテムと最新のcheckout履歴をJOINで取得
+    q = f"""
+    SELECT
+        ci.*,
+        ch.checkout_start_date,
+        ch.checkout_end_date
+    FROM child_item ci
+    LEFT JOIN (
+        SELECT
+            ch1.child_item_id,
+            ch1.checkout_start_date,
+            ch1.checkout_end_date
+        FROM checkout_history ch1
+        INNER JOIN (
+            -- 最新のstart_dateを持つ履歴を1つだけ取る
+            SELECT
+                child_item_id,
+                MAX(checkout_start_date) as max_start
+            FROM checkout_history
+            GROUP BY child_item_id
+        ) latest
+        ON ch1.child_item_id = latest.child_item_id
+        AND ch1.checkout_start_date = latest.max_start
+    ) ch
+    ON ci.id = ch.child_item_id
+    WHERE ci.item_id IN ({','.join(['?']*len(id_list))})
+    ORDER BY ci.item_id, ci.branch_no
+    """
     child_items = db.execute(q, id_list).fetchall()
-    # 親アイテムも必要なら（例：item名の付与用）
+    # 親アイテム（item名付与用）
     items = db.execute(f"SELECT id, product_name FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
     item_map = {i['id']: i for i in items}
     return render_template('child_items.html', child_items=child_items, item_map=item_map)
+
 
 @app.route('/bulk_manager_change', methods=['GET', 'POST'])
 @login_required
@@ -1138,11 +1197,34 @@ def change_owner():
         flash("選択した中に所有者変更できるアイテムがありません（持ち出し中のみ可能）")
         return redirect(url_for('index'))
 
-    # 子アイテム取得（枝番順）
-    child_items = db.execute(
-        f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(target_ids))}) ORDER BY item_id, branch_no",
-        target_ids
-    ).fetchall()
+    # child_itemとcheckout_history（最新）をJOINして取得
+    q = f"""
+    SELECT
+        ci.*,
+        ch.checkout_start_date,
+        ch.checkout_end_date
+    FROM child_item ci
+    LEFT JOIN (
+        SELECT
+            ch1.child_item_id,
+            ch1.checkout_start_date,
+            ch1.checkout_end_date
+        FROM checkout_history ch1
+        INNER JOIN (
+            SELECT
+                child_item_id,
+                MAX(checkout_start_date) as max_start
+            FROM checkout_history
+            GROUP BY child_item_id
+        ) latest
+        ON ch1.child_item_id = latest.child_item_id
+        AND ch1.checkout_start_date = latest.max_start
+    ) ch
+    ON ci.id = ch.child_item_id
+    WHERE ci.item_id IN ({','.join(['?']*len(target_ids))})
+    ORDER BY ci.item_id, ci.branch_no
+    """
+    child_items = db.execute(q, target_ids).fetchall()
 
     # 編集画面
     if request.method == 'GET':
@@ -1246,10 +1328,34 @@ def dispose_transfer_request():
                     ).fetchone()[0]
                     item['sample_count'] = cnt
                 item_list.append(item)
-            child_items = db.execute(
-                f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
-                item_ids
-            ).fetchall()
+            # ▼ child_item取得＋checkout_history最新JOINに書き換え
+            q = f"""
+            SELECT
+                ci.*,
+                ch.checkout_start_date,
+                ch.checkout_end_date
+            FROM child_item ci
+            LEFT JOIN (
+                SELECT
+                    ch1.child_item_id,
+                    ch1.checkout_start_date,
+                    ch1.checkout_end_date
+                FROM checkout_history ch1
+                INNER JOIN (
+                    SELECT
+                        child_item_id,
+                        MAX(checkout_start_date) as max_start
+                    FROM checkout_history
+                    GROUP BY child_item_id
+                ) latest
+                ON ch1.child_item_id = latest.child_item_id
+                AND ch1.checkout_start_date = latest.max_start
+            ) ch
+            ON ci.id = ch.child_item_id
+            WHERE ci.item_id IN ({','.join(['?']*len(item_ids))})
+            ORDER BY ci.item_id, ci.branch_no
+            """
+            child_items = db.execute(q, item_ids).fetchall()
             for msg in errors:
                 flash(msg)
             department = g.user['department']
@@ -1352,10 +1458,34 @@ def dispose_transfer_request():
                 item['sample_count'] = cnt
             item_list.append(item)
 
-        child_items = db.execute(
-            f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
-            item_ids
-        ).fetchall()
+        # ▼ child_item取得＋checkout_history最新JOINに書き換え
+        q = f"""
+        SELECT
+            ci.*,
+            ch.checkout_start_date,
+            ch.checkout_end_date
+        FROM child_item ci
+        LEFT JOIN (
+            SELECT
+                ch1.child_item_id,
+                ch1.checkout_start_date,
+                ch1.checkout_end_date
+            FROM checkout_history ch1
+            INNER JOIN (
+                SELECT
+                    child_item_id,
+                    MAX(checkout_start_date) as max_start
+                FROM checkout_history
+                GROUP BY child_item_id
+            ) latest
+            ON ch1.child_item_id = latest.child_item_id
+            AND ch1.checkout_start_date = latest.max_start
+        ) ch
+        ON ci.id = ch.child_item_id
+        WHERE ci.item_id IN ({','.join(['?']*len(item_ids))})
+        ORDER BY ci.item_id, ci.branch_no
+        """
+        child_items = db.execute(q, item_ids).fetchall()
 
         department = g.user['department']
         managers_same_dept = get_managers_by_department(department, db)
@@ -1491,6 +1621,7 @@ if __name__ == '__main__':
     init_db()
     init_user_db()
     init_child_item_db()
+    init_checkout_history_db()
     init_item_application_db()
     init_application_history_db()
     init_inventory_check_db()
