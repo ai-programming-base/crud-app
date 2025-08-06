@@ -1281,20 +1281,19 @@ def child_items_multiple():
     FROM child_item ci
     LEFT JOIN (
         SELECT
-            ch1.child_item_id,
-            ch1.checkout_start_date,
-            ch1.checkout_end_date
-        FROM checkout_history ch1
-        INNER JOIN (
-            -- 最新のstart_dateを持つ履歴を1つだけ取る
+            ch2.child_item_id,
+            ch2.checkout_start_date,
+            ch2.checkout_end_date
+        FROM (
             SELECT
-                child_item_id,
-                MAX(checkout_start_date) as max_start
-            FROM checkout_history
-            GROUP BY child_item_id
-        ) latest
-        ON ch1.child_item_id = latest.child_item_id
-        AND ch1.checkout_start_date = latest.max_start
+                ch1.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY ch1.child_item_id
+                    ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
+                ) AS rn
+            FROM checkout_history ch1
+        ) ch2
+        WHERE ch2.rn = 1
     ) ch
     ON ci.id = ch.child_item_id
     WHERE ci.item_id IN ({','.join(['?']*len(id_list))})
@@ -1404,19 +1403,19 @@ def change_owner():
     FROM child_item ci
     LEFT JOIN (
         SELECT
-            ch1.child_item_id,
-            ch1.checkout_start_date,
-            ch1.checkout_end_date
-        FROM checkout_history ch1
-        INNER JOIN (
+            ch2.child_item_id,
+            ch2.checkout_start_date,
+            ch2.checkout_end_date
+        FROM (
             SELECT
-                child_item_id,
-                MAX(checkout_start_date) as max_start
-            FROM checkout_history
-            GROUP BY child_item_id
-        ) latest
-        ON ch1.child_item_id = latest.child_item_id
-        AND ch1.checkout_start_date = latest.max_start
+                ch1.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY ch1.child_item_id
+                    ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
+                ) AS rn
+            FROM checkout_history ch1
+        ) ch2
+        WHERE ch2.rn = 1
     ) ch
     ON ci.id = ch.child_item_id
     WHERE ci.item_id IN ({','.join(['?']*len(target_ids))})
@@ -1535,19 +1534,19 @@ def dispose_transfer_request():
             FROM child_item ci
             LEFT JOIN (
                 SELECT
-                    ch1.child_item_id,
-                    ch1.checkout_start_date,
-                    ch1.checkout_end_date
-                FROM checkout_history ch1
-                INNER JOIN (
+                    ch2.child_item_id,
+                    ch2.checkout_start_date,
+                    ch2.checkout_end_date
+                FROM (
                     SELECT
-                        child_item_id,
-                        MAX(checkout_start_date) as max_start
-                    FROM checkout_history
-                    GROUP BY child_item_id
-                ) latest
-                ON ch1.child_item_id = latest.child_item_id
-                AND ch1.checkout_start_date = latest.max_start
+                        ch1.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY ch1.child_item_id
+                            ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
+                        ) AS rn
+                    FROM checkout_history ch1
+                ) ch2
+                WHERE ch2.rn = 1
             ) ch
             ON ci.id = ch.child_item_id
             WHERE ci.item_id IN ({','.join(['?']*len(item_ids))})
@@ -1665,19 +1664,19 @@ def dispose_transfer_request():
         FROM child_item ci
         LEFT JOIN (
             SELECT
-                ch1.child_item_id,
-                ch1.checkout_start_date,
-                ch1.checkout_end_date
-            FROM checkout_history ch1
-            INNER JOIN (
+                ch2.child_item_id,
+                ch2.checkout_start_date,
+                ch2.checkout_end_date
+            FROM (
                 SELECT
-                    child_item_id,
-                    MAX(checkout_start_date) as max_start
-                FROM checkout_history
-                GROUP BY child_item_id
-            ) latest
-            ON ch1.child_item_id = latest.child_item_id
-            AND ch1.checkout_start_date = latest.max_start
+                    ch1.*,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY ch1.child_item_id
+                        ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
+                    ) AS rn
+                FROM checkout_history ch1
+            ) ch2
+            WHERE ch2.rn = 1
         ) ch
         ON ci.id = ch.child_item_id
         WHERE ci.item_id IN ({','.join(['?']*len(item_ids))})
