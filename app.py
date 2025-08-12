@@ -1032,6 +1032,13 @@ def approval():
                         params + [item_id]
                     )
 
+                approver_dept = (g.user['department'] or "").strip()
+                if status in ("入庫持ち出し譲渡申請中", "入庫持ち出し申請中", "入庫申請中"):
+                    db.execute(
+                        "UPDATE item SET approval_group=? WHERE id=?",
+                        (approver_dept, item_id)
+                    )
+
                 if status == "入庫持ち出し譲渡申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
