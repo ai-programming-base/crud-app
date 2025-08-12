@@ -312,7 +312,7 @@
 
         function submitApplyRequest() {
             var form = document.getElementById('main-form');
-            form.action = "{{ url_for('apply_request') }}";
+            form.action = "{{ url_for('entry_request') }}";
             form.method = "POST";
             form.submit();
         }
@@ -375,7 +375,7 @@
                 return;
             }
             const id = checked[0].value;
-            window.location.href = "/add?copy_id=" + encodeURIComponent(id);
+            window.location.href = "/raise_request?copy_id=" + encodeURIComponent(id);
         }
 
         function showPrintLabels() {
@@ -443,7 +443,7 @@
         <button class="dropbtn">作成 / ラベル</button>
         <div class="dropdown-menu">
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-            <a href="{{ url_for('add', per_page=per_page, **filters) }}">起票（新規登録）</a>
+            <a href="{{ url_for('raise_request', per_page=per_page, **filters) }}">起票（新規登録）</a>
             <button type="button" onclick="copyToAdd()">起票（コピー：1件選択）</button>
             <button type="button" onclick="showPrintLabels()">選択ラベル印刷</button>
             {% endif %}
@@ -460,6 +460,17 @@
             <button type="button" onclick="submitCheckoutRequest()">持ち出し申請</button>
             <button type="button" onclick="submitReturnRequest()">持ち出し終了申請</button>
             <button type="button" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
+            <a href="{{ url_for('my_applications') }}">申請済みアイテム</a>
+        </div>
+        </div>
+        {% endif %}
+
+        {% if 'admin' in g.user_roles or 'manager' %}
+        <div class="dropdown">
+        <button class="dropbtn">承認メニュー</button>
+        <div class="dropdown-menu">
+            <div class="group-title">承認</div>
+            <a href="{{ url_for('approval') }}">承認アイテム</a>
         </div>
         </div>
         {% endif %}

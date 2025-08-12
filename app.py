@@ -550,10 +550,10 @@ def index():
     )
 
 
-@app.route('/add', methods=['GET', 'POST'])
+@app.route('/raise_request', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin', 'manager', 'proper', 'partner')
-def add():
+def raise_request():
     SELECT_FIELDS_PATH = os.path.join(os.path.dirname(__file__), 'select_fields.json')
     if os.path.exists(SELECT_FIELDS_PATH):
         with open(SELECT_FIELDS_PATH, encoding='utf-8') as f:
@@ -587,7 +587,7 @@ def add():
             for msg in errors:
                 flash(msg)
             # 再描画時もdictで渡す
-            return render_template('form.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields)
+            return render_template('raise_request.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields)
 
         db = get_db()
         db.execute(
@@ -597,7 +597,7 @@ def add():
         db.commit()
 
         if 'add_and_next' in request.form:
-            return render_template('form.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields, message="登録しました。同じ内容で新規入力できます。")
+            return render_template('raise_request.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields, message="登録しました。同じ内容で新規入力できます。")
         else:
             if request.form.get('from_menu') or request.args.get('from_menu'):
                 return redirect(url_for('menu'))
@@ -615,7 +615,7 @@ def add():
             item = dict(item)
             for f in USER_FIELDS:
                 values[f['key']] = str(item.get(f['key'], '')) if item.get(f['key']) is not None else ""
-    return render_template('form.html', fields=USER_FIELDS, values=values, select_fields=select_fields)
+    return render_template('raise_request.html', fields=USER_FIELDS, values=values, select_fields=select_fields)
 
 
 @app.route('/delete_selected', methods=['POST'])
@@ -654,10 +654,10 @@ def update_items():
         return redirect(url_for('index'))
 
 
-@app.route('/apply_request', methods=['POST', 'GET'])
+@app.route('/entry_request', methods=['POST', 'GET'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
-def apply_request():
+def entry_request():
     db = get_db()
 
     # 申請画面の表示（POST:選択済みID受取→フォーム表示）
@@ -674,7 +674,7 @@ def apply_request():
         managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
         return render_template(
-            'apply_form.html',
+            'entry_request.html',
             items=items, fields=INDEX_FIELDS,
             approver_default=managers_same_dept[0] if managers_same_dept else '',
             approver_list=all_managers
@@ -728,7 +728,7 @@ def apply_request():
             managers_same_dept = get_managers_by_department(department, db)
             all_managers = get_managers_by_department(None, db)
             return render_template(
-                'apply_form.html',
+                'entry_request.html',
                 items=items, fields=INDEX_FIELDS,
                 approver_default=managers_same_dept[0] if managers_same_dept else '',
                 approver_list=all_managers
