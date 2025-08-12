@@ -470,7 +470,7 @@
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
             <button type="button" onclick="changeOwners()">所有者を変更</button>
             <button type="button" onclick="bulkManagerChange()">管理者を一括変更</button>
-            <button type="button" onclick="showChildItems()">小アイテムを表示</button>
+            <button type="button" onclick="showChildItems()">アイテム詳細表示</button>
             {% endif %}
             {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
             <button type="button" class="danger" onclick="submitDelete()">選択アイテムを削除</button>

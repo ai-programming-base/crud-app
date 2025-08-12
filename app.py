@@ -114,7 +114,7 @@ def init_checkout_history_db():
                 item_id INTEGER NOT NULL,
                 checkout_start_date TEXT NOT NULL,
                 checkout_end_date TEXT NOT NULL,
-                FOREIGN KEY(child_item_id) REFERENCES child_item(id)
+                FOREIGN KEY(item_id) REFERENCES item(id)
             )
         ''')
         db.commit()
@@ -1338,14 +1338,49 @@ def child_items_multiple():
     if not id_list:
         flash("通し番号が指定されていません")
         return redirect(url_for('index'))
+
     db = get_db()
-    # 子アイテム取得
+
+    # 子アイテム
     q = f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(id_list))}) ORDER BY item_id, branch_no"
     child_items = db.execute(q, id_list).fetchall()
-    # 親アイテム（item名付与用）
-    items = db.execute(f"SELECT id, product_name FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
-    item_map = {i['id']: i for i in items}
-    return render_template('child_items.html', child_items=child_items, item_map=item_map)
+
+    # 親アイテム（概要表示 & 名称マップ）
+    items_rows = db.execute(
+        f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(id_list))}) ORDER BY id",
+        id_list
+    ).fetchall()
+    items = [dict(r) for r in items_rows]
+    item_map = {r['id']: dict(r) for r in items_rows}
+
+    # ▼ 持ち出し申請履歴：checkout_history をそのまま表示用に整形
+    hist_rows = db.execute(
+        f"""
+        SELECT item_id, checkout_start_date, checkout_end_date
+        FROM checkout_history
+        WHERE item_id IN ({','.join(['?']*len(id_list))})
+        ORDER BY item_id, checkout_start_date DESC, checkout_end_date DESC
+        """,
+        id_list
+    ).fetchall()
+
+    checkout_histories = []
+    for r in hist_rows:
+        checkout_histories.append({
+            'item_id': r['item_id'],
+            'product_name': item_map.get(r['item_id'], {}).get('product_name', ''),
+            'checkout_start_date': r['checkout_start_date'],
+            'checkout_end_date': r['checkout_end_date'],
+        })
+
+    return render_template(
+        'child_items.html',
+        child_items=child_items,
+        item_map=item_map,
+        items=items,
+        fields=INDEX_FIELDS,
+        checkout_histories=checkout_histories
+    )
 
 
 @app.route('/bulk_manager_change', methods=['GET', 'POST'])
