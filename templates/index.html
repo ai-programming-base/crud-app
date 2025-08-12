@@ -12,7 +12,6 @@
         td.editing, td.filter-editing { background: #d0e3f7; }
         .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
         .filter-indicator { color: #33691e; font-weight: bold; margin-left: 10px; font-size: 14px; background: #f5f5cc; border-radius: 4px; padding: 2px 8px; }
-        .button-group { margin-top: 4px; }
         .main-btn {
             background: #4285f4;
             color: #fff;
@@ -42,6 +41,58 @@
         .filter-toggle { background: #ffd600; color: #333; border: none; border-radius: 4px; padding: 5px 14px; margin-bottom: 6px; font-size: 14px; cursor: pointer; }
         .filter-toggle.on { background: #ffee58; }
         .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+        /* ====== Top Action Bar ====== */
+        .topbar {
+        position: sticky; 
+        top: 0; 
+        z-index: 50;
+        width: fit-content; /* 中身に合わせた幅 */
+        margin: 8px 0 10px 12px; /* 左寄せ */
+        display: flex; 
+        gap: 8px; 
+        align-items: center; 
+        justify-content: flex-start;
+        background: #fff; 
+        border: 1px solid #dfe3ea; 
+        border-radius: 8px; /* 小さめR */
+        padding: 8px 10px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .topbar-left, .topbar-right {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .topbar .primary {
+        background: #3161c4; color: #fff; border: none; border-radius: 9999px;
+        font-weight: 700; padding: 8px 16px; cursor: pointer;
+        }
+        .topbar .primary:hover { background:#23468e; }
+
+        .dropdown { position: relative; }
+        .dropbtn {
+        background: #f6f8fb; color:#223; border:1px solid #d0d7e2; border-radius: 9999px;
+        padding: 8px 14px; font-weight: 600; cursor: pointer;
+        }
+        .dropbtn:hover { background:#eef2f9; }
+        .dropdown-menu {
+        position: absolute; top: 110%; left: 0; min-width: 220px; overflow: hidden;
+        background:#fff; border:1px solid #d0d7e2; border-radius: 12px; box-shadow: 0 10px 24px rgba(0,0,0,.08);
+        display: none;
+        }
+        .dropdown.open .dropdown-menu { display: block; }
+        .dropdown-menu .group-title {
+        font-size:12px; color:#667085; padding:8px 12px; background:#f8fafc; border-bottom:1px solid #eef2f6;
+        }
+        .dropdown-menu button, .dropdown-menu a {
+        display:block; width:100%; text-align:left; background:transparent; border:none;
+        padding:10px 12px; font-size:14px; cursor:pointer;
+        }
+        .dropdown-menu button:hover, .dropdown-menu a:hover { background:#f2f6ff; }
+        .dropdown-menu .danger { color:#c62828; }
+
+        .topbar .counter {
+        font-size:13px; color:#3161c4; background:#e9f1ff; border:1px solid #cfe0ff;
+        padding:6px 10px; border-radius: 9999px; font-weight: 700;
+        }
     </style>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -336,7 +387,40 @@
             let ids = Array.from(checked).map(cb => cb.value).join(',');
             window.open("/print_labels?ids=" + encodeURIComponent(ids), "_blank");
         }
+        // ====== Topbar: dropdownと選択件数 ======
+        document.addEventListener('DOMContentLoaded', function () {
+        // ドロップダウン開閉
+        document.querySelectorAll('.dropdown .dropbtn').forEach(btn => {
+            btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const dd = this.closest('.dropdown');
+            document.querySelectorAll('.dropdown').forEach(d => { if (d !== dd) d.classList.remove('open'); });
+            dd.classList.toggle('open');
+            });
+        });
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('open'));
+        });
 
+        // 選択カウンタ
+        const counterEl = document.getElementById('selected-counter');
+        const updateCounter = () => {
+            const n = document.querySelectorAll('input[name="selected_ids"]:checked').length;
+            counterEl.textContent = `選択: ${n} 件`;
+        };
+        document.addEventListener('change', (e) => {
+            if (e.target && e.target.name === 'selected_ids') updateCounter();
+        });
+        updateCounter();
+
+        // 「一括保存」ボタン（トップバー）
+        const topSaveBtn = document.getElementById('top-save');
+        if (topSaveBtn) {
+            topSaveBtn.addEventListener('click', () => {
+            document.getElementById('main-form').submit();
+            });
+        }
+        });
     </script>
 </head>
 <body>
@@ -349,6 +433,59 @@
         </div>
     </div>
     <h1>アイテムリスト</h1>
+    <!-- ====== Top Action Bar ====== -->
+    <div class="topbar">
+    <div class="topbar-left">
+        <div id="selected-counter" class="counter">選択: 0 件</div>
+
+        {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+        <div class="dropdown">
+        <button class="dropbtn">作成 / ラベル</button>
+        <div class="dropdown-menu">
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+            <a href="{{ url_for('add', per_page=per_page, **filters) }}">起票（新規登録）</a>
+            <button type="button" onclick="copyToAdd()">起票（コピー：1件選択）</button>
+            <button type="button" onclick="showPrintLabels()">選択ラベル印刷</button>
+            {% endif %}
+        </div>
+        </div>
+        {% endif %}
+
+        {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
+        <div class="dropdown">
+        <button class="dropbtn">申請メニュー</button>
+        <div class="dropdown-menu">
+            <div class="group-title">申請</div>
+            <button type="button" onclick="submitApplyRequest()">入庫申請</button>
+            <button type="button" onclick="submitCheckoutRequest()">持ち出し申請</button>
+            <button type="button" onclick="submitReturnRequest()">持ち出し終了申請</button>
+            <button type="button" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
+        </div>
+        </div>
+        {% endif %}
+
+        <div class="dropdown">
+        <button class="dropbtn">一括操作</button>
+        <div class="dropdown-menu">
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+            <button type="button" onclick="changeOwners()">所有者を変更</button>
+            <button type="button" onclick="bulkManagerChange()">管理者を一括変更</button>
+            <button type="button" onclick="showChildItems()">小アイテムを表示</button>
+            {% endif %}
+            {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
+            <button type="button" class="danger" onclick="submitDelete()">選択アイテムを削除</button>
+            {% endif %}
+        </div>
+        </div>
+    </div>
+
+    <div class="topbar-right">
+        {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+        <button id="top-save" class="primary">編集内容を一括保存</button>
+        {% endif %}
+    </div>
+    </div>
+    <!-- ====== /Top Action Bar ====== -->
     {% with messages = get_flashed_messages() %}
     {% if messages %}
       <div class="error-message">
@@ -365,27 +502,6 @@
       {% endif %}
       <button type="button" class="filter-toggle" id="toggle-filter">フィルタを表示/非表示</button>
     </div>
-    <!-- ▼ 表示件数セレクタ -->
-    <div style="margin:10px 0 10px 0; display:flex; align-items:center;">
-      <form method="get" id="per-page-form" style="display:inline;">
-        {% for k, v in filters.items() %}
-          {% if v %}
-            <input type="hidden" name="{{k}}_filter" value="{{v}}">
-          {% endif %}
-        {% endfor %}
-        <select name="per_page" onchange="document.getElementById('per-page-form').submit()" style="font-size:14px; padding:4px 6px;">
-          <option value="10" {% if per_page == '10' %}selected{% endif %}>10件</option>
-          <option value="20" {% if per_page == '20' %}selected{% endif %}>20件</option>
-          <option value="50" {% if per_page == '50' %}selected{% endif %}>50件</option>
-          <option value="100" {% if per_page == '100' %}selected{% endif %}>100件</option>
-          <option value="all" {% if per_page == 'all' %}selected{% endif %}>全て</option>
-        </select>
-        <input type="hidden" name="page" value="1">
-      </form>
-      <span style="margin-left:12px;">表示件数の変更</span>
-    </div>
-    <!-- ▲ 表示件数セレクタ -->
-
     <form id="filter-form" method="get" action="{{ url_for('index') }}">
         <input type="hidden" name="per_page" value="{{ per_page }}">
         <table>
@@ -455,43 +571,28 @@
             {% endif %}
           {% endfor %}
         </div>
-        <div class="button-group" style="margin-top:4px;">
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-                <a href="{{ url_for('add', per_page=per_page, **filters) }}" class="main-btn">起票（新規登録）</a>
-                <button type="button" class="main-btn" onclick="copyToAdd()">起票（コピー）</button>
-                <button type="button" class="main-btn" onclick="showPrintLabels()">選択ラベル印刷</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="submitApplyRequest()">入庫申請</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="submitCheckoutRequest()">持ち出し申請</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="submitReturnRequest()">持ち出し終了申請</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="changeOwners()">所有者を変更</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="bulkManagerChange()">管理者を一括変更</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-                <button type="submit" class="main-btn">編集内容を一括保存</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="submitDelete()">選択したアイテムを削除</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-                <button type="button" class="main-btn" onclick="showChildItems()">選択したアイテムの小アイテムを表示</button>
-            {% endif %}
-        </div>
-        <div style="margin: 18px 0 0 0;">
-            <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
-        </div>
     </form>
+    <!-- ▼ 表示件数セレクタ -->
+    <div style="margin:10px 0 10px 0; display:flex; align-items:center;">
+      <form method="get" id="per-page-form" style="display:inline;">
+        {% for k, v in filters.items() %}
+          {% if v %}
+            <input type="hidden" name="{{k}}_filter" value="{{v}}">
+          {% endif %}
+        {% endfor %}
+        <select name="per_page" onchange="document.getElementById('per-page-form').submit()" style="font-size:14px; padding:4px 6px;">
+          <option value="20" {% if per_page == '20' %}selected{% endif %}>20件</option>
+          <option value="50" {% if per_page == '50' %}selected{% endif %}>50件</option>
+          <option value="100" {% if per_page == '100' %}selected{% endif %}>100件</option>
+          <option value="all" {% if per_page == 'all' %}selected{% endif %}>全て</option>
+        </select>
+        <input type="hidden" name="page" value="1">
+      </form>
+      <span style="margin-left:12px;">表示件数の変更</span>
+    </div>
+    <!-- ▲ 表示件数セレクタ -->
+    <div style="margin: 18px 0 0 0;">
+        <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
+    </div>
 </body>
 </html>

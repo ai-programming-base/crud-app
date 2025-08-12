@@ -344,7 +344,7 @@ def menu():
 @login_required
 def index():
     # ページ件数指定: ?per_page=10/20/50/100/all
-    per_page_raw = request.args.get('per_page', '10')
+    per_page_raw = request.args.get('per_page', '20')
     if per_page_raw == 'all':
         per_page = None
         page = 1
