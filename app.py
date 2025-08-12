@@ -111,7 +111,7 @@ def init_checkout_history_db():
         db.execute('''
             CREATE TABLE IF NOT EXISTS checkout_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                child_item_id INTEGER NOT NULL,
+                item_id INTEGER NOT NULL,
                 checkout_start_date TEXT NOT NULL,
                 checkout_end_date TEXT NOT NULL,
                 FOREIGN KEY(child_item_id) REFERENCES child_item(id)
@@ -1127,11 +1127,11 @@ def approval():
                                 (owner, "持ち出し中", child_item_id)
                             )
 
-                        # checkout_history に履歴を追加
-                        db.execute(
-                            "INSERT INTO checkout_history (child_item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
-                            (child_item_id, start_date, end_date)
-                        )
+                    # checkout_history に履歴を追加
+                    db.execute(
+                        "INSERT INTO checkout_history (item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
+                        (item_id, start_date, end_date)
+                    )
 
                     # 指定枝番(branch_no)を譲渡済みに変更（ownerも空欄に）
                     transfer_branch_nos = new_values.get("transfer_branch_nos", [])
@@ -1171,11 +1171,11 @@ def approval():
                                 (owner, "持ち出し中", child_item_id)
                             )
 
-                        # checkout_history に履歴を追加
-                        db.execute(
-                            "INSERT INTO checkout_history (child_item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
-                            (child_item_id, start_date, end_date)
-                        )
+                    # checkout_history に履歴を追加
+                    db.execute(
+                        "INSERT INTO checkout_history (item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
+                        (item_id, start_date, end_date)
+                    )
 
                 elif status == "入庫申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
@@ -1207,10 +1207,11 @@ def approval():
                                 "UPDATE child_item SET owner=?, status=? WHERE id=?",
                                 (owner, "持ち出し中", child_item_id)
                             )
-                        db.execute(
-                            "INSERT INTO checkout_history (child_item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
-                            (child_item_id, start_date, end_date)
-                        )
+
+                    db.execute(
+                        "INSERT INTO checkout_history (item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
+                        (item_id, start_date, end_date)
+                    )
 
                     # 譲渡申請時の譲渡済処理（ownerも空欄に）
                     if status == "持ち出し譲渡申請中":
@@ -1338,33 +1339,8 @@ def child_items_multiple():
         flash("通し番号が指定されていません")
         return redirect(url_for('index'))
     db = get_db()
-    # 子アイテムと最新のcheckout履歴をJOINで取得
-    q = f"""
-    SELECT
-        ci.*,
-        ch.checkout_start_date,
-        ch.checkout_end_date
-    FROM child_item ci
-    LEFT JOIN (
-        SELECT
-            ch2.child_item_id,
-            ch2.checkout_start_date,
-            ch2.checkout_end_date
-        FROM (
-            SELECT
-                ch1.*,
-                ROW_NUMBER() OVER (
-                    PARTITION BY ch1.child_item_id
-                    ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
-                ) AS rn
-            FROM checkout_history ch1
-        ) ch2
-        WHERE ch2.rn = 1
-    ) ch
-    ON ci.id = ch.child_item_id
-    WHERE ci.item_id IN ({','.join(['?']*len(id_list))})
-    ORDER BY ci.item_id, ci.branch_no
-    """
+    # 子アイテム取得
+    q = f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(id_list))}) ORDER BY item_id, branch_no"
     child_items = db.execute(q, id_list).fetchall()
     # 親アイテム（item名付与用）
     items = db.execute(f"SELECT id, product_name FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
@@ -1460,34 +1436,11 @@ def change_owner():
         flash("選択した中に所有者変更できるアイテムがありません（持ち出し中のみ可能）")
         return redirect(url_for('index'))
 
-    # child_itemとcheckout_history（最新）をJOINして取得
-    q = f"""
-    SELECT
-        ci.*,
-        ch.checkout_start_date,
-        ch.checkout_end_date
-    FROM child_item ci
-    LEFT JOIN (
-        SELECT
-            ch2.child_item_id,
-            ch2.checkout_start_date,
-            ch2.checkout_end_date
-        FROM (
-            SELECT
-                ch1.*,
-                ROW_NUMBER() OVER (
-                    PARTITION BY ch1.child_item_id
-                    ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
-                ) AS rn
-            FROM checkout_history ch1
-        ) ch2
-        WHERE ch2.rn = 1
-    ) ch
-    ON ci.id = ch.child_item_id
-    WHERE ci.item_id IN ({','.join(['?']*len(target_ids))})
-    ORDER BY ci.item_id, ci.branch_no
-    """
-    child_items = db.execute(q, target_ids).fetchall()
+    # 子アイテム取得（枝番順）
+    child_items = db.execute(
+        f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(target_ids))}) ORDER BY item_id, branch_no",
+        target_ids
+    ).fetchall()
 
     # 編集画面
     if request.method == 'GET':
@@ -1592,34 +1545,10 @@ def dispose_transfer_request():
                     ).fetchone()[0]
                     item['sample_count'] = cnt
                 item_list.append(item)
-            # ▼ child_item取得＋checkout_history最新JOINに書き換え
-            q = f"""
-            SELECT
-                ci.*,
-                ch.checkout_start_date,
-                ch.checkout_end_date
-            FROM child_item ci
-            LEFT JOIN (
-                SELECT
-                    ch2.child_item_id,
-                    ch2.checkout_start_date,
-                    ch2.checkout_end_date
-                FROM (
-                    SELECT
-                        ch1.*,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY ch1.child_item_id
-                            ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
-                        ) AS rn
-                    FROM checkout_history ch1
-                ) ch2
-                WHERE ch2.rn = 1
-            ) ch
-            ON ci.id = ch.child_item_id
-            WHERE ci.item_id IN ({','.join(['?']*len(item_ids))})
-            ORDER BY ci.item_id, ci.branch_no
-            """
-            child_items = db.execute(q, item_ids).fetchall()
+            child_items = db.execute(
+                f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
+                item_ids
+            ).fetchall()
             for msg in errors:
                 flash(msg)
             department = g.user['department']
@@ -1723,34 +1652,11 @@ def dispose_transfer_request():
                 item['sample_count'] = cnt
             item_list.append(item)
 
-        # ▼ child_item取得＋checkout_history最新JOINに書き換え
-        q = f"""
-        SELECT
-            ci.*,
-            ch.checkout_start_date,
-            ch.checkout_end_date
-        FROM child_item ci
-        LEFT JOIN (
-            SELECT
-                ch2.child_item_id,
-                ch2.checkout_start_date,
-                ch2.checkout_end_date
-            FROM (
-                SELECT
-                    ch1.*,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY ch1.child_item_id
-                        ORDER BY ch1.checkout_end_date DESC, ch1.checkout_start_date DESC, ch1.id DESC
-                    ) AS rn
-                FROM checkout_history ch1
-            ) ch2
-            WHERE ch2.rn = 1
-        ) ch
-        ON ci.id = ch.child_item_id
-        WHERE ci.item_id IN ({','.join(['?']*len(item_ids))})
-        ORDER BY ci.item_id, ci.branch_no
-        """
-        child_items = db.execute(q, item_ids).fetchall()
+        # ▼ child_item取得
+        child_items = db.execute(
+            f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
+            item_ids
+        ).fetchall()
 
         department = g.user['department']
         managers_same_dept = get_managers_by_department(department, db)

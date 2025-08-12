@@ -177,8 +177,6 @@
                     <th>枝番</th>
                     <th>所有者</th>
                     <th>状態</th>
-                    <th>持ち出し開始日</th>
-                    <th>持ち出し終了日</th>
                     <th>備考</th>
                 </tr>
                 {% for ci in child_items if ci['item_id'] == item['id'] and ci['status'] not in ['破棄', '譲渡'] %}
@@ -189,8 +187,6 @@
                     <td>{{ ci['branch_no'] }}</td>
                     <td>{{ ci['owner'] }}</td>
                     <td>{{ ci['status'] }}</td>
-                    <td>{{ ci['checkout_start_date'] }}</td>
-                    <td>{{ ci['checkout_end_date'] }}</td>
                     <td>{{ ci['comment'] }}</td>
                 </tr>
                 {% endfor %}
