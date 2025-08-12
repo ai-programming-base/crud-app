@@ -1076,7 +1076,7 @@ def approval():
                             (child_item_id, start_date, end_date)
                         )
 
-                    # 3. 指定枝番(branch_no)を譲渡済みに変更
+                    # 指定枝番(branch_no)を譲渡済みに変更（ownerも空欄に）
                     transfer_branch_nos = new_values.get("transfer_branch_nos", [])
                     transfer_comment = new_values.get("transfer_comment", "")
                     for branch_no in transfer_branch_nos:
@@ -1123,7 +1123,6 @@ def approval():
                     db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
 
                 elif status in ("持ち出し申請中", "持ち出し譲渡申請中"):
-
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
                     start_date = new_values.get("checkout_start_date", "")
                     end_date = new_values.get("checkout_end_date", "")
@@ -1154,7 +1153,8 @@ def approval():
                             "INSERT INTO checkout_history (child_item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
                             (child_item_id, start_date, end_date)
                         )
-                    # 譲渡申請時の譲渡済処理
+
+                    # 譲渡申請時の譲渡済処理（ownerも空欄に）
                     if status == "持ち出し譲渡申請中":
                         transfer_branch_nos = new_values.get("transfer_branch_nos", [])
                         transfer_comment = new_values.get("transfer_comment", "")
@@ -1169,14 +1169,14 @@ def approval():
                         "UPDATE item SET status=?, storage=? WHERE id=?",
                         ("入庫", new_values.get("storage", ""), item_id)
                     )
-                    # 返却対象の child_item を「返却済」に
+                    # 返却対象の child_item を「返却済」に（ownerも空欄に）
                     db.execute(
                         """
                         UPDATE child_item
-                        SET status=?
+                        SET status=?, owner=?
                         WHERE item_id=? AND status NOT IN (?, ?)
                         """,
-                        ("返却済", item_id, "破棄", "譲渡")
+                        ("返却済", '', item_id, "破棄", "譲渡")
                     )
                     # 履歴にも返却を追加する場合はこちらで処理（例: checkout_end_date記録など）
 
@@ -1190,7 +1190,7 @@ def approval():
                         cid = target["id"]
                         db.execute(
                             "UPDATE child_item SET status=?, comment=?, owner=? WHERE id=?",
-                            (new_status, dispose_comment, '', cid)
+                            (new_status, dispose_comment, '', cid)  # ownerも空欄に
                         )
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
@@ -1243,7 +1243,6 @@ def approval():
                     ''',
                     (comment, now_str, "差し戻し", app_id)
                 )
-                # 必要に応じて履歴登録など
 
                 # メール通知
                 to=""
