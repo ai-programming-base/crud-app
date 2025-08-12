@@ -32,7 +32,8 @@
         {% endif %}
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
             <a href="{{ url_for('approval', from_menu=1) }}" class="btn">承認アイテム</a>
-            <a href="{{ url_for('register') }}" class="btn btn-primary">ユーザー追加</a>
+            <a href="{{ url_for('register') }}" class="btn">ユーザー追加</a>
+            <a href="{{ url_for('users_list') }}" class="btn">ユーザー一覧</a>
             <a href="{{ url_for('select_field_config') }}" class="btn">起票フィールド選択肢設定</a>
         {% endif %}
     </div>

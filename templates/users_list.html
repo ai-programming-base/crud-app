@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ユーザー一覧</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { background:#f6f8fa; font-family:'Segoe UI','Meiryo',sans-serif; margin:0; }
+    .wrap { width:96%; max-width:1100px; margin:28px auto; }
+    h1 { margin:10px 0 14px; color:#306090; letter-spacing:1px; font-size:1.5rem; }
+    .toolbar { display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    .search { display:flex; gap:8px; align-items:center; }
+    .input {
+      padding:9px 10px; border:1.5px solid #bed8fa; border-radius:6px; font-size:1rem; min-width:240px;
+    }
+    .btn, .link-btn {
+      background:#4285f4; color:#fff; border:none; border-radius:6px; font-size:0.98rem; font-weight:bold;
+      padding:8px 14px; cursor:pointer; text-decoration:none; display:inline-block; transition:background .15s;
+    }
+    .btn:hover, .link-btn:hover { background:#23468e; }
+    .btn-gray { background:#aaa; }
+    .btn-gray:hover { background:#888; }
+    table { border-collapse:collapse; width:100%; background:#fff; box-shadow:0 2px 8px rgba(0,0,0,.05); }
+    th, td { border:1px solid #e2e8f0; padding:8px 12px; }
+    th { background:#eef5ff; text-align:left; }
+    td.actions a { margin-right:8px; }
+    .subtle { color:#666; font-size:.95rem; margin-top:8px; }
+    .alert { background:#fff1f1; color:#db4437; padding:10px 13px; border-radius:5px; margin-bottom:14px; font-weight:bold; border-left:4px solid #db4437; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>ユーザー一覧</h1>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="alert">
+          {% for msg in messages %}{{ msg }}<br>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="toolbar">
+      <form class="search" method="get">
+        <input class="input" type="text" name="q" placeholder="ユーザー名 / メール / 部門 / 氏名 で検索" value="{{ q or '' }}">
+        <button class="btn" type="submit">検索</button>
+        {% if q %}
+          <a class="link-btn btn-gray" href="{{ url_for('users_list') }}">クリア</a>
+        {% endif %}
+      </form>
+      <div style="flex:1"></div>
+      <a class="link-btn" href="{{ url_for('register') }}">＋ 新規登録</a>
+      <a class="link-btn btn-gray" href="{{ url_for('index') }}">一覧へ戻る</a>
+    </div>
+
+    <table>
+      <tr>
+        <th style="width:70px;">ID</th>
+        <th>ユーザー名</th>
+        <th>メール</th>
+        <th>所属部門</th>
+        <th>氏名</th>
+        <th>ロール</th>
+        <th style="width:120px;">操作</th>
+      </tr>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.id }}</td>
+        <td>{{ u.username }}</td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.department or '' }}</td>
+        <td>{{ u.realname or '' }}</td>
+        <td>{{ u.roles }}</td>
+        <td class="actions">
+          <a class="link-btn" href="{{ url_for('edit_user', user_id=u.id) }}">編集</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+
+    {% if not users %}
+      <div class="subtle">ユーザーが見つかりません。</div>
+    {% endif %}
+  </div>
+</body>
+</html>

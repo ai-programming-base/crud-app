@@ -335,6 +335,110 @@ def register():
     return render_template('register.html', roles=roles)
 
 
+@app.route('/users', methods=['GET'])
+@login_required
+@roles_required('admin', 'manager')
+def users_list():
+    db = get_db()
+    q = request.args.get('q', '').strip()
+
+    base_sql = """
+        SELECT
+            u.id, u.username, u.email, u.department, u.realname,
+            COALESCE(GROUP_CONCAT(r.name, ', '), '') AS roles
+        FROM users u
+        LEFT JOIN user_roles ur ON ur.user_id = u.id
+        LEFT JOIN roles r ON r.id = ur.role_id
+    """
+    params = []
+    where = ""
+    if q:
+        where = """
+            WHERE u.username LIKE ? OR u.email LIKE ?
+               OR u.department LIKE ? OR u.realname LIKE ?
+        """
+        like = f"%{q}%"
+        params = [like, like, like, like]
+
+    group_order = " GROUP BY u.id ORDER BY u.username ASC"
+
+    rows = db.execute(base_sql + where + group_order, params).fetchall()
+    users = [dict(r) for r in rows]
+
+    return render_template('users_list.html', users=users, q=q)
+
+
+@app.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
+@login_required
+@roles_required('admin', 'manager')
+def edit_user(user_id):
+    db = get_db()
+    # 編集対象ユーザー
+    user = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if not user:
+        flash("対象ユーザーが見つかりません")
+        return redirect(url_for('index'))
+
+    # 全ロール
+    roles = db.execute("SELECT id, name FROM roles").fetchall()
+    # そのユーザーの現在ロールID集合
+    cur_role_rows = db.execute("SELECT role_id FROM user_roles WHERE user_id=?", (user_id,)).fetchall()
+    current_role_ids = {str(r['role_id']) for r in cur_role_rows}
+
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')  # 空なら変更しない
+        email = request.form.get('email', '').strip()
+        department = request.form.get('department', '').strip()
+        realname = request.form.get('realname', '').strip()
+        selected_roles = request.form.getlist('roles')
+
+        # 入力バリデーション
+        if not username or not email:
+            error = 'ユーザー名、メールは必須です'
+        else:
+            # 自分以外に同名がいないか
+            u = db.execute("SELECT id FROM users WHERE username=? AND id<>?", (username, user_id)).fetchone()
+            if u:
+                error = 'そのユーザー名は既に使われています'
+
+        if error:
+            flash(error)
+        else:
+            # users更新（パスワードは空なら変更しない）
+            if password:
+                db.execute(
+                    "UPDATE users SET username=?, password=?, email=?, department=?, realname=? WHERE id=?",
+                    (username, generate_password_hash(password), email, department, realname, user_id)
+                )
+            else:
+                db.execute(
+                    "UPDATE users SET username=?, email=?, department=?, realname=? WHERE id=?",
+                    (username, email, department, realname, user_id)
+                )
+
+            # ロール更新：一旦削除→再挿入
+            db.execute("DELETE FROM user_roles WHERE user_id=?", (user_id,))
+            for role_id in selected_roles:
+                db.execute("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", (user_id, role_id))
+
+            db.commit()
+            flash('ユーザー情報を更新しました')
+            return redirect(url_for('edit_user', user_id=user_id))
+
+    # GET または バリデーションNG時の再表示
+    # 最新のユーザー情報を再取得してテンプレートに渡す
+    user = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    cur_role_rows = db.execute("SELECT role_id FROM user_roles WHERE user_id=?", (user_id,)).fetchall()
+    current_role_ids = {str(r['role_id']) for r in cur_role_rows}
+
+    return render_template('user_edit.html',
+                           user=user,
+                           roles=roles,
+                           current_role_ids=current_role_ids)
+
+
 @app.route('/')
 @login_required
 def menu():
