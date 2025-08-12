@@ -125,7 +125,7 @@
                                 <td>{{ item.parsed_values[f.key]|default('') }}</td>
                             </tr>
                         {% endfor %}
-                        {% if item.parsed_values.status == "入庫持ち出し譲渡申請中" %}
+                        {% if item.parsed_values.status == "入庫持ち出し申請中" or item.parsed_values.status == "入庫持ち出し譲渡申請中" or item.parsed_values.status == "持ち出し申請中" or item.parsed_values.status == "持ち出し譲渡申請中" %}
                             <tr>
                                 <th>持ち出し開始日</th>
                                 <td>{{ item.parsed_values.checkout_start_date|default('') }}</td>
@@ -152,6 +152,8 @@
                                     {% endif %}
                                 </td>
                             </tr>
+                        {% endif %}
+                        {% if item.parsed_values.status == "入庫持ち出し譲渡申請中" or item.parsed_values.status == "持ち出し譲渡申請中" %}
                             <tr>
                                 <th>譲渡枝番</th>
                                 <td>
@@ -163,37 +165,15 @@
                                 </td>
                             </tr>
                             <tr>
+                                <th>譲渡日</th>
+                                <td>{{ item.parsed_values.transfer_date|default('') }}</td>
+                            </tr>
+                            <tr>
                                 <th>譲渡コメント</th>
                                 <td>{{ item.parsed_values.transfer_comment|default('') }}</td>
                             </tr>
-                        {% elif item.parsed_values.status == "入庫持ち出し申請中" %}
-                            <tr>
-                                <th>持ち出し開始日</th>
-                                <td>{{ item.parsed_values.checkout_start_date|default('') }}</td>
-                            </tr>
-                            <tr>
-                                <th>持ち出し終了日</th>
-                                <td>{{ item.parsed_values.checkout_end_date|default('') }}</td>
-                            </tr>
-                            <tr>
-                                <th>所有者リスト</th>
-                                <td>
-                                    {% if item.parsed_values.owner_list %}
-                                        <table style="border-collapse: collapse; font-size: 90%; margin-left: 10px;">
-                                            <tr><th>枝番</th><th>所有者</th></tr>
-                                            {% for owner in item.parsed_values.owner_list %}
-                                            <tr>
-                                                <td style="padding: 2px 8px;">{{ loop.index }}</td>
-                                                <td style="padding: 2px 8px;">{{ owner }}</td>
-                                            </tr>
-                                            {% endfor %}
-                                        </table>
-                                    {% else %}
-                                        （なし）
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% elif item.parsed_values.status == "破棄・譲渡申請中" %}
+                        {% endif %}
+                        {% if item.parsed_values.status == "破棄・譲渡申請中" %}
                             <tr>
                                 <th>種別</th>
                                 <td>{{ item.parsed_values.dispose_type }}</td>
@@ -223,24 +203,20 @@
                                 <td>{{ item.parsed_values.handler }}</td>
                             </tr>
                             <tr>
+                                <th>破棄・譲渡日</th>
+                                <td>{{ item.parsed_values.dispose_date|default('') }}</td>
+                            </tr>
+                            <tr>
                                 <th>破棄・譲渡コメント</th>
                                 <td>{{ item.parsed_values.dispose_comment }}</td>
                             </tr>
-                        {% elif item.parsed_values.status == "返却申請中" %}
+                        {% endif %}
+                        {% if item.parsed_values.status == "返却申請中" %}
                             <tr>
                                 <th>返却確認日</th>
                                 <td>{{ item.parsed_values.return_date|default('') }}</td>
                             </tr>
-                        {% else %}
-                            <tr>
-                                <th>管理者</th>
-                                <td>{{ item.parsed_values.sample_manager|default('') }}</td>
-                            </tr>
-                            <tr>
-                                <th>コメント</th>
-                                <td>{{ item.parsed_values.comment|default('') }}</td>
-                            </tr>
-                        {% endif %}
+                        {% endif %}                            
                     </table>
                 </td>
                 <td>{{ item['applicant_comment'] }}</td>

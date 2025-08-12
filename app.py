@@ -100,6 +100,7 @@ def init_child_item_db():
                 owner TEXT NOT NULL,
                 status TEXT NOT NULL,
                 comment TEXT,
+                transfer_dispose_date TEXT,
                 UNIQUE(item_id, branch_no)
             )
         ''')
@@ -596,6 +597,7 @@ def apply_request():
         with_transfer = form.get("with_transfer") == "1" if with_checkout else False
         transfer_branch_ids = form.getlist("transfer_branch_ids") if with_checkout and with_transfer else []
         transfer_comment = form.get("transfer_comment", "") if with_checkout and with_transfer else ""
+        transfer_date = form.get("transfer_date", "") if with_checkout and with_transfer else ""
 
         errors = []
         if not manager:
@@ -664,6 +666,7 @@ def apply_request():
                 new_values['checkout_start_date'] = start_date
                 new_values['checkout_end_date'] = end_date
                 new_values['owner_list'] = owner_lists.get(str(id), [])
+                new_values['transfer_date'] = transfer_date
                 # transfer_branch_ids 形式は itemID_branchNo。ここではitemごとに格納
                 transfer_ids_this = []
                 for t in transfer_branch_ids:
@@ -758,6 +761,7 @@ def checkout_request():
         with_transfer = form.get("with_transfer") == "1"
         transfer_branch_ids = form.getlist("transfer_branch_ids") if with_transfer else []
         transfer_comment = form.get("transfer_comment", "") if with_transfer else ""
+        transfer_date = form.get("transfer_date", "") if with_transfer else ""
 
         errors = []
         if not manager:
@@ -822,6 +826,7 @@ def checkout_request():
                 new_values['checkout_start_date'] = start_date
                 new_values['checkout_end_date'] = end_date
                 new_values['owner_list'] = owner_lists.get(str(id), [])
+                new_values['transfer_date'] = transfer_date
                 transfer_ids_this = []
                 for t in transfer_branch_ids:
                     try:
@@ -1078,11 +1083,12 @@ def approval():
 
                     # 指定枝番(branch_no)を譲渡済みに変更（ownerも空欄に）
                     transfer_branch_nos = new_values.get("transfer_branch_nos", [])
+                    transfer_date = new_values.get("transfer_date", "")
                     transfer_comment = new_values.get("transfer_comment", "")
                     for branch_no in transfer_branch_nos:
                         db.execute(
-                            "UPDATE child_item SET status=?, comment=?, owner=? WHERE item_id=? AND branch_no=?",
-                            ("譲渡", transfer_comment, '', item_id, branch_no)
+                            "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=? WHERE item_id=? AND branch_no=?",
+                            ("譲渡", transfer_comment, '', transfer_date, item_id, branch_no)
                         )
 
                 elif status == "入庫持ち出し申請中":
@@ -1157,11 +1163,12 @@ def approval():
                     # 譲渡申請時の譲渡済処理（ownerも空欄に）
                     if status == "持ち出し譲渡申請中":
                         transfer_branch_nos = new_values.get("transfer_branch_nos", [])
+                        transfer_date = new_values.get("transfer_date", "")
                         transfer_comment = new_values.get("transfer_comment", "")
                         for branch_no in transfer_branch_nos:
                             db.execute(
-                                "UPDATE child_item SET status=?, comment=?, owner=? WHERE item_id=? AND branch_no=?",
-                                ("譲渡", transfer_comment, '', item_id, branch_no)
+                                "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=? WHERE item_id=? AND branch_no=?",
+                                ("譲渡", transfer_comment, '', transfer_date, item_id, branch_no)
                             )
 
                 elif status == "返却申請中":
@@ -1183,14 +1190,15 @@ def approval():
                 elif status == "破棄・譲渡申請中":
                     dispose_type = new_values.get('dispose_type')
                     target_child_branches = new_values.get('target_child_branches', [])
+                    transfer_dispose_date = new_values.get("transfer_dispose_date", "")
                     dispose_comment = new_values.get('dispose_comment', '')
 
                     new_status = "破棄" if dispose_type == "破棄" else "譲渡"
                     for target in target_child_branches:
                         cid = target["id"]
                         db.execute(
-                            "UPDATE child_item SET status=?, comment=?, owner=? WHERE id=?",
-                            (new_status, dispose_comment, '', cid)  # ownerも空欄に
+                            "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=?  WHERE id=?",
+                            (new_status, dispose_comment, '', transfer_dispose_date, cid)  # ownerも空欄に
                         )
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
@@ -1487,6 +1495,7 @@ def dispose_transfer_request():
         item_ids = request.form.getlist('item_id')
         dispose_type = request.form.get('dispose_type', '')
         handler = request.form.get('handler', '').strip()
+        dispose_date = request.form.get("dispose_date", '')
         dispose_comment = request.form.get('dispose_comment', '').strip()
         applicant_comment = request.form.get('comment', '').strip()
         approver = request.form.get('approver', '').strip()
@@ -1592,6 +1601,7 @@ def dispose_transfer_request():
 
             new_values = dict(item_dict)
             new_values['dispose_type'] = dispose_type
+            new_values['dispose_date'] = dispose_date
             new_values['handler'] = handler
             new_values['dispose_comment'] = dispose_comment
 

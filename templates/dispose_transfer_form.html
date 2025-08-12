@@ -29,6 +29,12 @@
         .parent-table th, .parent-table td { font-size: 0.97em; }
     </style>
     <script>
+        // 日付セット
+        function getToday() {
+            const d = new Date();
+            return d.toISOString().slice(0, 10);
+        }
+
         function checkAndSubmit() {
             {% for item in items %}
             if (!document.querySelector('input[name="qty_checked_{{ item["id"] }}"]:checked')) {
@@ -99,6 +105,7 @@
             var approverList = {{ approver_list|tojson|safe }};
             var defaultApprover = "{{ approver_default|e }}";
             setupApproverSelector("approver", approverList, defaultApprover);
+            document.getElementById('dispose_date').value = getToday();
         });
     </script>
 </head>
@@ -194,6 +201,10 @@
         <div class="form-field">
             <label class="form-label" for="handler">対応者</label>
             <input class="form-input" type="text" id="handler" name="handler" value="{{ g.user['username'] }}">
+        </div>
+        <div class="form-field">
+            <label class="form-label" for="dispose_date">破棄・譲渡日</label>
+            <input class="form-input" type="date" id="dispose_date" name="dispose_date">
         </div>
         <div class="form-field">
             <label class="form-label" for="dispose_comment">破棄・譲渡コメント</label>

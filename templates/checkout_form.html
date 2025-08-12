@@ -95,6 +95,10 @@
                     譲渡申請も同時に行う
                 </label>
                 <div id="transfer-detail-area" style="display:none; margin-top:8px;">
+                    <div class="form-field">
+                        <label class="form-label" for="transfer_date">譲渡日</label>
+                        <input class="form-input" type="date" id="transfer_date" name="transfer_date">
+                    </div>
                     <div id="transfer-branch-tables"></div>
                     <div class="form-field">
                         <label class="form-label" for="transfer_comment">譲渡コメント</label>
@@ -156,6 +160,7 @@
         document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('start_date').value = getToday();
             document.getElementById('end_date').value = getThreeMonthLast();
+            document.getElementById('transfer_date').value = getToday();
             {% if g.user %}
                 document.getElementById('manager').value = "{{ g.user['username'] }}";
             {% endif %}
