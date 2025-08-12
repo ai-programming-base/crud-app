@@ -38,8 +38,6 @@
             outline: none;
             box-sizing: border-box;
         }
-        .filter-toggle { background: #ffd600; color: #333; border: none; border-radius: 4px; padding: 5px 14px; margin-bottom: 6px; font-size: 14px; cursor: pointer; }
-        .filter-toggle.on { background: #ffee58; }
         .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
         /* ====== Top Action Bar ====== */
         .topbar {
@@ -92,6 +90,35 @@
         .topbar .counter {
         font-size:13px; color:#3161c4; background:#e9f1ff; border:1px solid #cfe0ff;
         padding:6px 10px; border-radius: 9999px; font-weight: 700;
+        }
+        /* フィルタ クリアボタン（×） */
+        .filter-clear {
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #ccc;
+        color: white;
+        font-weight: bold;
+        font-size: 12px;
+        line-height: 16px;
+        text-align: center;
+        cursor: pointer;
+        user-select: none;
+        display: none; /* 値がある時だけJSで表示 */
+        z-index: 20;
+        transition: background 0.15s ease, transform 0.15s ease;
+        }
+        .filter-clear:hover {
+        background: #999;
+        transform: translateY(-50%) scale(1.1);
+        }
+        .filter-clear:active {
+        background: #777;
+        transform: translateY(-50%) scale(0.95);
         }
     </style>
     <script>
@@ -165,17 +192,6 @@
                 });
             });
 
-            document.getElementById('toggle-filter').addEventListener('click', function () {
-                var row = document.getElementById('filter-row');
-                if (row.style.display === 'none') {
-                    row.style.display = '';
-                    this.classList.add('on');
-                } else {
-                    row.style.display = 'none';
-                    this.classList.remove('on');
-                }
-            });
-
             document.querySelectorAll('td[data-filter-editable="true"]').forEach(function(td) {
                 let input = td.querySelector('input');
                 td.addEventListener('click', function(e) { input.focus(); });
@@ -187,14 +203,6 @@
                 });
             });
 
-            var row = document.getElementById('filter-row');
-            var hasFilter = {{ (filters.values()|join('')|length > 0)|tojson }};
-            if (!hasFilter) {
-                row.style.display = 'none';
-                document.getElementById('toggle-filter').classList.remove('on');
-            } else {
-                document.getElementById('toggle-filter').classList.add('on');
-            }
             var filterChoices = {{ filter_choices_dict | tojson }};
             document.querySelectorAll('.filter-cell-input').forEach(function(div){
                 let col = div.dataset.col;
@@ -203,6 +211,51 @@
                 let dropdown = div.parentElement.querySelector('.filter-dropdown');
                 let hidden = div.parentElement.querySelector('input[type="hidden"]');
                 let state = { open:false, value:div.textContent.trim(), filtered:choices.slice(), selected:-1 };
+
+                // ▼▼▼ ここから：クリアボタン（×）追加 ▼▼▼
+                const td = div.parentElement;
+                let clearBtn = td.querySelector('.filter-clear');
+                if (!clearBtn) {
+                    clearBtn = document.createElement('div');
+                    clearBtn.className = 'filter-clear';
+                    clearBtn.setAttribute('title', 'クリア');
+                    clearBtn.textContent = '×';
+                    td.appendChild(clearBtn);
+                }
+
+                function showOrHideClear() {
+                    const hasValue = (div.textContent.trim() || hidden.value.trim());
+                    clearBtn.style.display = hasValue ? 'block' : 'none';
+                }
+
+                // 初期表示
+                showOrHideClear();
+
+                // クリックでクリア → 自動サブミット
+                clearBtn.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    div.textContent = '';
+                    hidden.value = '';
+                    state.value = '';
+                    state.selected = -1;
+
+                    if (typeof updateDropdown === 'function') updateDropdown();
+                    if (typeof closeDropdown === 'function') closeDropdown();
+
+                    showOrHideClear();
+
+                    setTimeout(function(){
+                        document.getElementById('filter-form').submit();
+                    }, 10);
+                });
+
+                div.addEventListener('input', showOrHideClear);
+                div.addEventListener('blur', function(){
+                    setTimeout(showOrHideClear, 0);
+                });
+                // ▲▲▲ ここまで：クリアボタン（×）追加 ▲▲▲
 
                 function openDropdown() {
                     state.open = true;
@@ -506,13 +559,6 @@
       </div>
     {% endif %}
     {% endwith %}
-    <div class="summary">
-      全{{ total }}件
-      {% if filters.values()|join('')|length > 0 %}
-        <span class="filter-indicator">フィルタ中</span>
-      {% endif %}
-      <button type="button" class="filter-toggle" id="toggle-filter">フィルタを表示/非表示</button>
-    </div>
     <form id="filter-form" method="get" action="{{ url_for('index') }}">
         <input type="hidden" name="per_page" value="{{ per_page }}">
         <table>
@@ -526,7 +572,16 @@
             </tr>
             <tr id="filter-row" class="filter-row">
                 <td class="col-checkbox filter-cell"></td>
-                <td class="col-id filter-cell" style="text-align:right;color:#666;font-weight:bold;">フィルタ行</td>
+                <td class="col-id filter-cell" data-filter-editable="true" data-col="id" style="position:relative;">
+                    <div class="filter-cell-input"
+                        tabindex="0"
+                        data-col="id"
+                        style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
+                    >{{ filters.get('id', '') }}</div>
+                    <input type="hidden" name="id_filter" value="{{ filters.get('id', '') }}">
+                    <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
+                    </div>
+                </td>
                 {% for f in fields %}
                 <td class="filter-cell" data-filter-editable="true"
                     data-col="{{ f.key }}" style="position:relative;">
