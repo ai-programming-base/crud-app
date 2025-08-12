@@ -65,7 +65,7 @@
                 {% for f in fields %}
                 <td>{{ item[f.key] }}</td>
                 {% endfor %}
-                <td>{{ item['num_of_samples'] }}</td>
+                <td>{{ item['available_count'] }}</td>
                 <td><input type="checkbox" name="qty_checked"></td>
             </tr>
             {% endfor %}
@@ -75,8 +75,7 @@
                 <label class="form-label" for="manager">管理者</label>
                 <input class="form-input" type="text" id="manager" name="manager" value="">
             </div>
-            <!-- 入庫申請にはあった「持ち出し同時申請」チェックは不要 -->
-            <!-- 持ち出し申請欄は常時表示 -->
+
             <div id="checkout-area">
                 <div class="form-field">
                     <label class="form-label" for="start_date">持ち出し開始日</label>
@@ -88,7 +87,7 @@
                 </div>
                 <div id="owner-tables-area" style="margin-top:25px;"></div>
             </div>
-            <!-- 譲渡申請も同時可能 -->
+
             <div id="with_transfer_area" style="margin-top:8px;">
                 <label class="form-label">
                     <input type="checkbox" name="with_transfer" value="1" id="with_transfer_cb">
@@ -208,8 +207,8 @@
             {% for item in items %}
                 items.push({
                     id: "{{ item['id'] }}",
-                    num_of_samples: parseInt("{{ item['num_of_samples']|default(1) }}"),
-                    product_name: "{{ item['product_name']|default('')|e }}"
+                    product_name: "{{ item['product_name']|default('')|e }}",
+                    branches: {{ item['available_branches']|tojson|safe }}
                 });
             {% endfor %}
             let username = "{{ g.user['username'] }}";
@@ -221,11 +220,9 @@
                         <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
                         <th style="border:1px solid #aaa;padding:5px 10px;">所有者</th>
                     </tr>`;
-                let n = it.num_of_samples;
-                if (!n || n<=0) n = 1;
-                for (let i=1; i<=n; i++) {
+                for (let b of it.branches) {
                     t += `<tr>
-                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${i}</td>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
                     <td style="border:1px solid #aaa;padding:5px 10px;" contenteditable="true">
                         <input type="hidden" name="owner_list_${it.id}" value="${username}">
                         ${username}
@@ -255,8 +252,8 @@
             {% for item in items %}
                 items.push({
                     id: "{{ item['id'] }}",
-                    num_of_samples: parseInt("{{ item['num_of_samples']|default(1) }}"),
-                    product_name: "{{ item['product_name']|default('')|e }}"
+                    product_name: "{{ item['product_name']|default('')|e }}",
+                    branches: {{ item['available_branches']|tojson|safe }}
                 });
             {% endfor %}
             let allHtml = "";
@@ -267,14 +264,12 @@
                         <th style="border:1px solid #aaa;padding:5px 10px;">選択</th>
                         <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
                     </tr>`;
-                let n = it.num_of_samples;
-                if (!n || n <= 0) n = 1;
-                for (let i = 1; i <= n; i++) {
+                for (let b of it.branches) {
                     t += `<tr>
                     <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">
-                        <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${i}">
+                        <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${b}">
                     </td>
-                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${i}</td>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
                     </tr>`;
                 }
                 t += `</table></div>`;
@@ -283,7 +278,7 @@
             area.innerHTML = allHtml;
         }
 
-        // 承認者欄の初期値セット（apply_form.htmlのJSと同様）
+        // 承認者欄の初期値セット
         function setupApproverSelector(approverInputId, approverList, defaultApprover) {
             var approverInput = document.getElementById(approverInputId);
             approverInput.value = defaultApprover || "";

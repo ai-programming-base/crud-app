@@ -727,10 +727,39 @@ def checkout_request():
         if not item_ids:
             flash("申請対象を選択してください")
             return redirect(url_for('index'))
+
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
         items = [dict(row) for row in items]
+
+        # --- 利用可能枝番の付与（child_item.status が 破棄/譲渡 以外） ---
+        from collections import defaultdict
+        placeholders = ','.join(['?'] * len(item_ids))
+        child_rows = db.execute(
+            f"SELECT item_id, branch_no, status FROM child_item WHERE item_id IN ({placeholders})",
+            item_ids
+        ).fetchall()
+
+        eligible = defaultdict(list)
+        for r in child_rows:
+            if r['status'] not in ('破棄', '譲渡'):
+                eligible[r['item_id']].append(r['branch_no'])
+
+        for it in items:
+            fallback_n = int(it.get('num_of_samples') or 1)
+            fallback_branches = list(range(1, fallback_n + 1))
+            branches = eligible.get(it['id'], fallback_branches)
+            it['available_branches'] = sorted(branches)
+            it['available_count'] = len(branches)
+
+        # すべての枝番が対象外の item はリストから除外
+        items = [it for it in items if it['available_count'] > 0]
+        if not items:
+            flash("申請可能な枝番が存在しません（破棄・譲渡のみ）。")
+            return redirect(url_for('index'))
+        # ---------------------------------------------------------------
+
         department = g.user['department']
         managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
@@ -770,7 +799,6 @@ def checkout_request():
             errors.append("承認者を入力してください。")
         if len(qty_checked) != len(item_ids):
             errors.append("すべての数量チェックをしてください。")
-        # ▼ 譲渡申請ONなら枝番必須
         if with_transfer:
             if not transfer_branch_ids:
                 errors.append("譲渡する枝番を選択してください。")
@@ -782,6 +810,30 @@ def checkout_request():
                 f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
             ).fetchall()
             items = [dict(row) for row in items]
+
+            # --- 再描画時も利用可能枝番を付与＆0件 item を除外 ---
+            from collections import defaultdict
+            placeholders = ','.join(['?'] * len(item_ids))
+            child_rows = db.execute(
+                f"SELECT item_id, branch_no, status FROM child_item WHERE item_id IN ({placeholders})",
+                item_ids
+            ).fetchall()
+
+            eligible = defaultdict(list)
+            for r in child_rows:
+                if r['status'] not in ('破棄', '譲渡'):
+                    eligible[r['item_id']].append(r['branch_no'])
+
+            for it in items:
+                fallback_n = int(it.get('num_of_samples') or 1)
+                fallback_branches = list(range(1, fallback_n + 1))
+                branches = eligible.get(it['id'], fallback_branches)
+                it['available_branches'] = sorted(branches)
+                it['available_count'] = len(branches)
+
+            items = [it for it in items if it['available_count'] > 0]
+            # ----------------------------------------------------------
+
             department = g.user['department']
             managers_same_dept = get_managers_by_department(department, db)
             all_managers = get_managers_by_department(None, db)
