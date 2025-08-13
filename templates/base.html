@@ -1,0 +1,22 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}My App{% endblock %}</title>
+  <style>
+    :root { --header-height: 56px; } /* ヘッダーの実高さをここで一元管理 */
+    /* bodyのmargin-topは使わない（スペーサで押し下げる） */
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% include "_header.html" %}
+  <!-- ヘッダー分だけ押し下げるスペーサ（固定ヘッダーの下に必ず置く） -->
+  <div id="header-spacer" style="height: var(--header-height);"></div>
+
+  {% block content %}{% endblock %}
+
+  {% include "_footer.html" %}
+</body>
+</html>

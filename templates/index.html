@@ -1,664 +1,661 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Item List</title>
-    <style>
-        table { border-collapse: collapse; width: 98%; table-layout: fixed; }
-        th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
-        th { background: #eee; }
-        th.col-checkbox, td.col-checkbox {
-            width: 36px; min-width: 36px; max-width: 38px; text-align: center;
-        }
-        td.editing, td.filter-editing { background: #d0e3f7; }
-        .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
-        .filter-indicator { color: #33691e; font-weight: bold; margin-left: 10px; font-size: 14px; background: #f5f5cc; border-radius: 4px; padding: 2px 8px; }
-        .main-btn {
-            background: #4285f4;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: bold;
-            padding: 6px 16px;
-            margin-right: 8px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background .15s;
-        }
-        .main-btn:hover { background: #23468e; color: #fff; }
-        .pagination a, .pagination strong { margin: 0 3px; padding: 3px 9px; border-radius: 4px; background: #eee; text-decoration: none; color: #333; }
-        .pagination strong { background: #4285f4; color: #fff; }
-        .summary { font-size: 14px; color: #555; margin-bottom: 8px; }
-        .filter-cell input[type="text"] {
-            width: 100%;
-            padding:2px 4px;
-            font-size:13px;
-            border: 1px solid #bbb;
-            background: #fffde7;
-            outline: none;
-            box-sizing: border-box;
-        }
-        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
-        /* ====== Top Action Bar ====== */
-        .topbar {
-        position: sticky; 
-        top: 0; 
-        z-index: 50;
-        width: fit-content; /* 中身に合わせた幅 */
-        margin: 8px 0 10px 12px; /* 左寄せ */
-        display: flex; 
-        gap: 8px; 
-        align-items: center; 
-        justify-content: flex-start;
-        background: #fff; 
-        border: 1px solid #dfe3ea; 
-        border-radius: 8px; /* 小さめR */
-        padding: 8px 10px; 
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        }
-        .topbar-left, .topbar-right {
-        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-        }
-        .topbar .primary {
-        background: #3161c4; color: #fff; border: none; border-radius: 9999px;
-        font-weight: 700; padding: 8px 16px; cursor: pointer;
-        }
-        .topbar .primary:hover { background:#23468e; }
+{% extends "base.html" %}
 
-        .dropdown { position: relative; }
-        .dropbtn {
-        background: #f6f8fb; color:#223; border:1px solid #d0d7e2; border-radius: 9999px;
-        padding: 8px 14px; font-weight: 600; cursor: pointer;
-        }
-        .dropbtn:hover { background:#eef2f9; }
-        .dropdown-menu {
-        position: absolute; top: 110%; left: 0; min-width: 220px; overflow: hidden;
-        background:#fff; border:1px solid #d0d7e2; border-radius: 12px; box-shadow: 0 10px 24px rgba(0,0,0,.08);
-        display: none;
-        }
-        .dropdown.open .dropdown-menu { display: block; }
-        .dropdown-menu .group-title {
-        font-size:12px; color:#667085; padding:8px 12px; background:#f8fafc; border-bottom:1px solid #eef2f6;
-        }
-        .dropdown-menu button, .dropdown-menu a {
-        display:block; width:100%; text-align:left; background:transparent; border:none;
-        padding:10px 12px; font-size:14px; cursor:pointer;
-        }
-        .dropdown-menu button:hover, .dropdown-menu a:hover { background:#f2f6ff; }
-        .dropdown-menu .danger { color:#c62828; }
+{% block title %}アイテムリスト{% endblock %}
 
-        .topbar .counter {
-        font-size:13px; color:#3161c4; background:#e9f1ff; border:1px solid #cfe0ff;
-        padding:6px 10px; border-radius: 9999px; font-weight: 700;
-        }
-        /* フィルタ クリアボタン（×） */
-        .filter-clear {
-        position: absolute;
-        right: 4px;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: #ccc;
-        color: white;
+{% block head %}
+<style>
+    table { border-collapse: collapse; width: 98%; table-layout: fixed; }
+    th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
+    th { background: #eee; }
+    th.col-checkbox, td.col-checkbox {
+        width: 36px; min-width: 36px; max-width: 38px; text-align: center;
+    }
+    td.editing, td.filter-editing { background: #d0e3f7; }
+    .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
+    .filter-indicator { color: #33691e; font-weight: bold; margin-left: 10px; font-size: 14px; background: #f5f5cc; border-radius: 4px; padding: 2px 8px; }
+    .main-btn {
+        background: #4285f4;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
         font-weight: bold;
-        font-size: 12px;
-        line-height: 16px;
-        text-align: center;
+        padding: 6px 16px;
+        margin-right: 8px;
         cursor: pointer;
-        user-select: none;
-        display: none; /* 値がある時だけJSで表示 */
-        z-index: 20;
-        transition: background 0.15s ease, transform 0.15s ease;
-        }
-        .filter-clear:hover {
-        background: #999;
-        transform: translateY(-50%) scale(1.1);
-        }
-        .filter-clear:active {
-        background: #777;
-        transform: translateY(-50%) scale(0.95);
-        }
-    </style>
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            // Excelライク編集
-            const table = document.querySelector('form#main-form table');
-            const rows = Array.from(table.querySelectorAll('tr'));
-            const dataRowStart = rows.findIndex(r => r.querySelector('td[data-editable="true"]'));
-            const dataRows = rows.slice(dataRowStart);
-            const cellMatrix = dataRows.map(row =>
-                Array.from(row.querySelectorAll('td[data-editable="true"]'))
-            );
-            const allCells = cellMatrix.flat();
+        text-decoration: none;
+        transition: background .15s;
+    }
+    .main-btn:hover { background: #23468e; color: #fff; }
+    .pagination a, .pagination strong { margin: 0 3px; padding: 3px 9px; border-radius: 4px; background: #eee; text-decoration: none; color: #333; }
+    .pagination strong { background: #4285f4; color: #fff; }
+    .summary { font-size: 14px; color: #555; margin-bottom: 8px; }
+    .filter-cell input[type="text"] {
+        width: 100%;
+        padding:2px 4px;
+        font-size:13px;
+        border: 1px solid #bbb;
+        background: #fffde7;
+        outline: none;
+        box-sizing: border-box;
+    }
+    .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+    /* ====== Top Action Bar ====== */
+    .topbar {
+    position: sticky;
+    top: calc(var(--header-height) + 8px); /* ヘッダー直下に追従 */
+    z-index: 50;
+    width: fit-content;
+    margin: 8px 0 10px 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-start;
+    background: #fff;
+    border: 1px solid #dfe3ea;
+    border-radius: 8px;
+    padding: 8px 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .topbar-left, .topbar-right {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    }
+    .topbar .primary {
+      background: #3161c4; color: #fff; border: none; border-radius: 9999px;
+      font-weight: 700; padding: 8px 16px; cursor: pointer;
+    }
+    .topbar .primary:hover { background:#23468e; }
 
-            allCells.forEach((td, idx) => {
-                td.addEventListener('click', function(e) {
-                    if (td.classList.contains('editing')) return;
-                    td.classList.add('editing');
-                    let oldValue = td.innerText.trim();
-                    td.contentEditable = true;
-                    td.focus();
+    .dropdown { position: relative; }
+    .dropbtn {
+      background: #f6f8fb; color:#223; border:1px solid #d0d7e2; border-radius: 9999px;
+      padding: 8px 14px; font-weight: 600; cursor: pointer;
+    }
+    .dropbtn:hover { background:#eef2f9; }
+    .dropdown-menu {
+      position: absolute; top: 110%; left: 0; min-width: 220px; overflow: hidden;
+      background:#fff; border:1px solid #d0d7e2; border-radius: 12px; box-shadow: 0 10px 24px rgba(0,0,0,.08);
+      display: none;
+    }
+    .dropdown.open .dropdown-menu { display: block; }
+    .dropdown-menu .group-title {
+      font-size:12px; color:#667085; padding:8px 12px; background:#f8fafc; border-bottom:1px solid #eef2f6;
+    }
+    .dropdown-menu button, .dropdown-menu a {
+      display:block; width:100%; text-align:left; background:transparent; border:none;
+      padding:10px 12px; font-size:14px; cursor:pointer;
+    }
+    .dropdown-menu button:hover, .dropdown-menu a:hover { background:#f2f6ff; }
+    .dropdown-menu .danger { color:#c62828; }
 
-                    let pos = null;
-                    outer: for (let i = 0; i < cellMatrix.length; i++) {
-                        for (let j = 0; j < cellMatrix[i].length; j++) {
-                            if (cellMatrix[i][j] === td) {
-                                pos = {row: i, col: j};
-                                break outer;
-                            }
-                        }
+    .topbar .counter {
+      font-size:13px; color:#3161c4; background:#e9f1ff; border:1px solid #cfe0ff;
+      padding:6px 10px; border-radius: 9999px; font-weight: 700;
+    }
+    /* フィルタ クリアボタン（×） */
+    .filter-clear {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #ccc;
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
+      line-height: 16px;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+      display: none; /* 値がある時だけJSで表示 */
+      z-index: 20;
+      transition: background 0.15s ease, transform 0.15s ease;
+    }
+    .filter-clear:hover {
+      background: #999;
+      transform: translateY(-50%) scale(1.1);
+    }
+    .filter-clear:active {
+      background: #777;
+      transform: translateY(-50%) scale(0.95);
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Excelライク編集
+    const table = document.querySelector('form#main-form table');
+    const rows = Array.from(table.querySelectorAll('tr'));
+    const dataRowStart = rows.findIndex(r => r.querySelector('td[data-editable="true"]'));
+    const dataRows = rows.slice(dataRowStart);
+    const cellMatrix = dataRows.map(row =>
+        Array.from(row.querySelectorAll('td[data-editable="true"]'))
+    );
+    const allCells = cellMatrix.flat();
+
+    allCells.forEach((td, idx) => {
+        td.addEventListener('click', function(e) {
+            if (td.classList.contains('editing')) return;
+            td.classList.add('editing');
+            let oldValue = td.innerText.trim();
+            td.contentEditable = true;
+            td.focus();
+
+            let pos = null;
+            outer: for (let i = 0; i < cellMatrix.length; i++) {
+                for (let j = 0; j < cellMatrix[i].length; j++) {
+                    if (cellMatrix[i][j] === td) {
+                        pos = {row: i, col: j};
+                        break outer;
                     }
-
-                    function finishEdit() {
-                        td.classList.remove('editing');
-                        td.contentEditable = false;
-                        td.removeEventListener('blur', finishEdit);
-                        td.removeEventListener('keydown', keyHandler);
-                        let hidden = td.querySelector('input[type="hidden"]');
-                        if (hidden) hidden.value = td.innerText.trim();
-                    }
-                    function keyHandler(e) {
-                        if (e.key === 'Tab') {
-                            e.preventDefault();
-                            td.blur();
-                            let nextIdx = idx + (e.shiftKey ? -1 : 1);
-                            if (nextIdx >= 0 && nextIdx < allCells.length) {
-                                setTimeout(() => {
-                                    allCells[nextIdx].click();
-                                }, 1);
-                            }
-                        } else if (e.key === 'Enter') {
-                            e.preventDefault();
-                            td.blur();
-                            if (!pos) return;
-                            let nextRow = pos.row + (e.shiftKey ? -1 : 1);
-                            if (nextRow >= 0 && nextRow < cellMatrix.length) {
-                                let sameColCell = cellMatrix[nextRow][pos.col];
-                                if (sameColCell) {
-                                    setTimeout(() => {
-                                        sameColCell.click();
-                                    }, 1);
-                                }
-                            }
-                        } else if (e.key === 'Escape') {
-                            td.innerText = oldValue;
-                            td.blur();
-                        }
-                    }
-                    td.addEventListener('blur', finishEdit);
-                    td.addEventListener('keydown', keyHandler);
-                });
-            });
-
-            document.querySelectorAll('td[data-filter-editable="true"]').forEach(function(td) {
-                let input = td.querySelector('input');
-                td.addEventListener('click', function(e) { input.focus(); });
-                input.addEventListener('keydown', function(e) {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        document.getElementById('filter-form').submit();
-                    }
-                });
-            });
-
-            var filterChoices = {{ filter_choices_dict | tojson }};
-            document.querySelectorAll('.filter-cell-input').forEach(function(div){
-                let col = div.dataset.col;
-                let choices = (filterChoices[col] || []).slice();
-
-                let dropdown = div.parentElement.querySelector('.filter-dropdown');
-                let hidden = div.parentElement.querySelector('input[type="hidden"]');
-                let state = { open:false, value:div.textContent.trim(), filtered:choices.slice(), selected:-1 };
-
-                // ▼▼▼ ここから：クリアボタン（×）追加 ▼▼▼
-                const td = div.parentElement;
-                let clearBtn = td.querySelector('.filter-clear');
-                if (!clearBtn) {
-                    clearBtn = document.createElement('div');
-                    clearBtn.className = 'filter-clear';
-                    clearBtn.setAttribute('title', 'クリア');
-                    clearBtn.textContent = '×';
-                    td.appendChild(clearBtn);
                 }
+            }
 
-                function showOrHideClear() {
-                    const hasValue = (div.textContent.trim() || hidden.value.trim());
-                    clearBtn.style.display = hasValue ? 'block' : 'none';
-                }
-
-                // 初期表示
-                showOrHideClear();
-
-                // クリックでクリア → 自動サブミット
-                clearBtn.addEventListener('mousedown', function(e){
+            function finishEdit() {
+                td.classList.remove('editing');
+                td.contentEditable = false;
+                td.removeEventListener('blur', finishEdit);
+                td.removeEventListener('keydown', keyHandler);
+                let hidden = td.querySelector('input[type="hidden"]');
+                if (hidden) hidden.value = td.innerText.trim();
+            }
+            function keyHandler(e) {
+                if (e.key === 'Tab') {
                     e.preventDefault();
-                    e.stopPropagation();
-
-                    div.textContent = '';
-                    hidden.value = '';
-                    state.value = '';
-                    state.selected = -1;
-
-                    if (typeof updateDropdown === 'function') updateDropdown();
-                    if (typeof closeDropdown === 'function') closeDropdown();
-
-                    showOrHideClear();
-
-                    setTimeout(function(){
-                        document.getElementById('filter-form').submit();
-                    }, 10);
-                });
-
-                div.addEventListener('input', showOrHideClear);
-                div.addEventListener('blur', function(){
-                    setTimeout(showOrHideClear, 0);
-                });
-                // ▲▲▲ ここまで：クリアボタン（×）追加 ▲▲▲
-
-                function openDropdown() {
-                    state.open = true;
-                    dropdown.style.display = '';
-                    updateDropdown();
-                }
-                function closeDropdown() {
-                    state.open = false;
-                    dropdown.style.display = 'none';
-                    state.selected = -1;
-                }
-                function updateDropdown() {
-                    let txt = state.value;
-                    let filtered = !txt ? choices.slice() : choices.filter(v => v && v.indexOf(txt) !== -1);
-                    state.filtered = filtered;
-                    dropdown.innerHTML = '';
-                    filtered.forEach((v, idx) => {
-                        let opt = document.createElement('div');
-                        opt.textContent = v;
-                        opt.tabIndex = -1;
-                        opt.style.cssText = 'padding:3px 7px; cursor:pointer;';
-                        if (idx === state.selected) {
-                            opt.style.background = '#b1dafc';
-                        }
-                        opt.addEventListener('mousedown', function(e){
-                            e.preventDefault();
-                            choose(idx);
-                        });
-                        dropdown.appendChild(opt);
-                    });
-                }
-                function choose(idx) {
-                    let v = state.filtered[idx] || '';
-                    div.textContent = v;
-                    hidden.value = v;
-                    closeDropdown();
-                    setTimeout(function(){
-                        document.getElementById('filter-form').submit();
-                    }, 10);
-                }
-                function startEdit() {
-                    div.classList.add('filter-editing');
-                    div.contentEditable = true;
-                    div.focus();
-                    state.value = div.textContent.trim();
-                    state.selected = -1;
-                    openDropdown();
-                    updateDropdown();
-                }
-                function finishEdit() {
-                    div.classList.remove('filter-editing');
-                    div.contentEditable = false;
-                    closeDropdown();
-                    div.textContent = state.value;
-                    hidden.value = state.value;
-                }
-
-                div.addEventListener('click', function(e){
-                    if (!state.open) startEdit();
-                });
-                div.addEventListener('input', function(e){
-                    state.value = div.textContent.trim();
-                    state.selected = -1;
-                    updateDropdown();
-                });
-                div.addEventListener('keydown', function(e){
-                    if (!state.open) return;
-                    if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        if (state.selected < state.filtered.length - 1) {
-                            state.selected++;
-                            updateDropdown();
-                        }
-                    } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        if (state.selected > 0) {
-                            state.selected--;
-                            updateDropdown();
-                        }
-                    } else if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (state.selected >= 0 && state.filtered.length) {
-                            choose(state.selected);
-                        } else {
-                            finishEdit();
-                            setTimeout(function(){
-                                document.getElementById('filter-form').submit();
-                            }, 10);
-                        }
-                    } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        finishEdit();
+                    td.blur();
+                    let nextIdx = idx + (e.shiftKey ? -1 : 1);
+                    if (nextIdx >= 0 && nextIdx < allCells.length) {
+                        setTimeout(() => {
+                            allCells[nextIdx].click();
+                        }, 1);
                     }
-                });
-                div.addEventListener('blur', function(e){
-                    setTimeout(finishEdit, 150);
-                });
-            });
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    td.blur();
+                    if (!pos) return;
+                    let nextRow = pos.row + (e.shiftKey ? -1 : 1);
+                    if (nextRow >= 0 && nextRow < cellMatrix.length) {
+                        let sameColCell = cellMatrix[nextRow][pos.col];
+                        if (sameColCell) {
+                            setTimeout(() => {
+                                sameColCell.click();
+                            }, 1);
+                        }
+                    }
+                } else if (e.key === 'Escape') {
+                    td.innerText = oldValue;
+                    td.blur();
+                }
+            }
+            td.addEventListener('blur', finishEdit);
+            td.addEventListener('keydown', keyHandler);
         });
+    });
 
-        function submitDelete() {
-            var form = document.getElementById('main-form');
-            form.action = "{{ url_for('delete_selected') }}";
-            form.method = "POST";
-            form.submit();
-        }
-
-        function submitApplyRequest() {
-            var form = document.getElementById('main-form');
-            form.action = "{{ url_for('entry_request') }}";
-            form.method = "POST";
-            form.submit();
-        }
-
-        function submitCheckoutRequest() {
-            var form = document.getElementById('main-form');
-            form.action = "{{ url_for('checkout_request') }}";
-            form.method = "POST";
-            form.submit();
-        }
-
-        function showChildItems() {
-            let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-            if (checked.length < 1) {
-                alert("通し番号を1件以上選択してください");
-                return;
+    document.querySelectorAll('td[data-filter-editable="true"]').forEach(function(td) {
+        let input = td.querySelector('input');
+        td.addEventListener('click', function(e) { input && input.focus(); });
+        if (!input) return;
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('filter-form').submit();
             }
-            let ids = Array.from(checked).map(cb => cb.value).join(',');
-            window.location.href = "/child_items?ids=" + encodeURIComponent(ids);
+        });
+    });
+
+    var filterChoices = {{ filter_choices_dict | tojson }};
+    document.querySelectorAll('.filter-cell-input').forEach(function(div){
+        let col = div.dataset.col;
+        let choices = (filterChoices[col] || []).slice();
+
+        let dropdown = div.parentElement.querySelector('.filter-dropdown');
+        let hidden = div.parentElement.querySelector('input[type="hidden"]');
+        let state = { open:false, value:div.textContent.trim(), filtered:choices.slice(), selected:-1 };
+
+        // ▼ クリアボタン（×）
+        const td = div.parentElement;
+        let clearBtn = td.querySelector('.filter-clear');
+        if (!clearBtn) {
+            clearBtn = document.createElement('div');
+            clearBtn.className = 'filter-clear';
+            clearBtn.setAttribute('title', 'クリア');
+            clearBtn.textContent = '×';
+            td.appendChild(clearBtn);
         }
 
-        function bulkManagerChange() {
-            let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-            if (checked.length < 1) {
-                alert("通し番号を1件以上選択してください");
-                return;
-            }
-            let ids = Array.from(checked).map(cb => cb.value).join(',');
-            window.location.href = "/bulk_manager_change?ids=" + encodeURIComponent(ids);
+        function showOrHideClear() {
+            const hasValue = (div.textContent.trim() || (hidden && hidden.value.trim()));
+            clearBtn.style.display = hasValue ? 'block' : 'none';
         }
+        showOrHideClear();
 
-        function submitReturnRequest() {
-            var form = document.getElementById('main-form');
-            form.action = "{{ url_for('return_request') }}";
-            form.method = "POST";
-            form.submit();
-        }
-
-        function changeOwners() {
-            let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-            if (checked.length < 1) {
-                alert("通し番号を1件以上選択してください");
-                return;
-            }
-            let ids = Array.from(checked).map(cb => cb.value).join(',');
-            window.location.href = "/change_owner?ids=" + encodeURIComponent(ids);
-        }
-
-        function submitDisposeTransferRequest() {
-            var form = document.getElementById('main-form');
-            form.action = "{{ url_for('dispose_transfer_request') }}";
-            form.method = "POST";
-            form.submit();
-        }
-
-        function copyToAdd() {
-            const checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-            if (checked.length !== 1) {
-                alert("コピー起票するアイテムを1件だけ選択してください");
-                return;
-            }
-            const id = checked[0].value;
-            window.location.href = "/raise_request?copy_id=" + encodeURIComponent(id);
-        }
-
-        function showPrintLabels() {
-            let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-            if (checked.length < 1) {
-                alert("1件以上選択してください");
-                return;
-            }
-            let ids = Array.from(checked).map(cb => cb.value).join(',');
-            window.open("/print_labels?ids=" + encodeURIComponent(ids), "_blank");
-        }
-        // ====== Topbar: dropdownと選択件数 ======
-        document.addEventListener('DOMContentLoaded', function () {
-        // ドロップダウン開閉
-        document.querySelectorAll('.dropdown .dropbtn').forEach(btn => {
-            btn.addEventListener('click', function (e) {
+        clearBtn.addEventListener('mousedown', function(e){
+            e.preventDefault();
             e.stopPropagation();
-            const dd = this.closest('.dropdown');
-            document.querySelectorAll('.dropdown').forEach(d => { if (d !== dd) d.classList.remove('open'); });
-            dd.classList.toggle('open');
-            });
-        });
-        document.addEventListener('click', () => {
-            document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('open'));
+
+            div.textContent = '';
+            if (hidden) hidden.value = '';
+            state.value = '';
+            state.selected = -1;
+
+            if (typeof updateDropdown === 'function') updateDropdown();
+            if (typeof closeDropdown === 'function') closeDropdown();
+
+            showOrHideClear();
+            setTimeout(function(){
+                document.getElementById('filter-form').submit();
+            }, 10);
         });
 
-        // 選択カウンタ
-        const counterEl = document.getElementById('selected-counter');
-        const updateCounter = () => {
-            const n = document.querySelectorAll('input[name="selected_ids"]:checked').length;
-            counterEl.textContent = `選択: ${n} 件`;
-        };
-        document.addEventListener('change', (e) => {
-            if (e.target && e.target.name === 'selected_ids') updateCounter();
-        });
-        updateCounter();
+        div.addEventListener('input', showOrHideClear);
+        div.addEventListener('blur', function(){ setTimeout(showOrHideClear, 0); });
 
-        // 「一括保存」ボタン（トップバー）
-        const topSaveBtn = document.getElementById('top-save');
-        if (topSaveBtn) {
-            topSaveBtn.addEventListener('click', () => {
-            document.getElementById('main-form').submit();
+        function openDropdown() {
+            state.open = true;
+            dropdown.style.display = '';
+            updateDropdown();
+        }
+        function closeDropdown() {
+            state.open = false;
+            dropdown.style.display = 'none';
+            state.selected = -1;
+        }
+        function updateDropdown() {
+            let txt = state.value;
+            let filtered = !txt ? choices.slice() : choices.filter(v => v && v.indexOf(txt) !== -1);
+            state.filtered = filtered;
+            dropdown.innerHTML = '';
+            filtered.forEach((v, idx) => {
+                let opt = document.createElement('div');
+                opt.textContent = v;
+                opt.tabIndex = -1;
+                opt.style.cssText = 'padding:3px 7px; cursor:pointer;';
+                if (idx === state.selected) {
+                    opt.style.background = '#b1dafc';
+                }
+                opt.addEventListener('mousedown', function(e){
+                    e.preventDefault();
+                    choose(idx);
+                });
+                dropdown.appendChild(opt);
             });
         }
+        function choose(idx) {
+            let v = state.filtered[idx] || '';
+            div.textContent = v;
+            if (hidden) hidden.value = v;
+            closeDropdown();
+            setTimeout(function(){
+                document.getElementById('filter-form').submit();
+            }, 10);
+        }
+        function startEdit() {
+            div.classList.add('filter-editing');
+            div.contentEditable = true;
+            div.focus();
+            state.value = div.textContent.trim();
+            state.selected = -1;
+            openDropdown();
+            updateDropdown();
+        }
+        function finishEdit() {
+            div.classList.remove('filter-editing');
+            div.contentEditable = false;
+            closeDropdown();
+            div.textContent = state.value;
+            if (hidden) hidden.value = state.value;
+        }
+
+        div.addEventListener('click', function(){
+            if (!state.open) startEdit();
         });
-    </script>
-</head>
-<body>
-    <div style="width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;">
-        <div style="margin-top:18px; margin-bottom:2px;">
-            <span style="font-weight:bold; color:#3161c4; margin-right:12px;">
-                {{ g.user['username'] }} さん
-            </span>
-            <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
-        </div>
-    </div>
-    <h1>アイテムリスト</h1>
-    <!-- ====== Top Action Bar ====== -->
-    <div class="topbar">
-    <div class="topbar-left">
-        <div id="selected-counter" class="counter">選択: 0 件</div>
+        div.addEventListener('input', function(){
+            state.value = div.textContent.trim();
+            state.selected = -1;
+            updateDropdown();
+        });
+        div.addEventListener('keydown', function(e){
+            if (!state.open) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (state.selected < state.filtered.length - 1) {
+                    state.selected++;
+                    updateDropdown();
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (state.selected > 0) {
+                    state.selected--;
+                    updateDropdown();
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (state.selected >= 0 && state.filtered.length) {
+                    choose(state.selected);
+                } else {
+                    finishEdit();
+                    setTimeout(function(){
+                        document.getElementById('filter-form').submit();
+                    }, 10);
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                finishEdit();
+            }
+        });
+        div.addEventListener('blur', function(){
+            setTimeout(finishEdit, 150);
+        });
+    });
+});
 
+// ====== Topbar: dropdownと選択件数 ======
+document.addEventListener('DOMContentLoaded', function () {
+  // ドロップダウン開閉
+  document.querySelectorAll('.dropdown .dropbtn').forEach(btn => {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      const dd = this.closest('.dropdown');
+      document.querySelectorAll('.dropdown').forEach(d => { if (d !== dd) d.classList.remove('open'); });
+      dd.classList.toggle('open');
+    });
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('open'));
+  });
+
+  // 選択カウンタ
+  const counterEl = document.getElementById('selected-counter');
+  const updateCounter = () => {
+    const n = document.querySelectorAll('input[name="selected_ids"]:checked').length;
+    counterEl.textContent = `選択: ${n} 件`;
+  };
+  document.addEventListener('change', (e) => {
+    if (e.target && e.target.name === 'selected_ids') updateCounter();
+  });
+  updateCounter();
+
+  // 「一括保存」ボタン（トップバー）
+  const topSaveBtn = document.getElementById('top-save');
+  if (topSaveBtn) {
+    topSaveBtn.addEventListener('click', () => {
+      document.getElementById('main-form').submit();
+    });
+  }
+});
+
+// 操作用関数群
+function submitDelete() {
+  var form = document.getElementById('main-form');
+  form.action = "{{ url_for('delete_selected') }}";
+  form.method = "POST";
+  form.submit();
+}
+
+function submitApplyRequest() {
+  var form = document.getElementById('main-form');
+  form.action = "{{ url_for('entry_request') }}";
+  form.method = "POST";
+  form.submit();
+}
+
+function submitCheckoutRequest() {
+  var form = document.getElementById('main-form');
+  form.action = "{{ url_for('checkout_request') }}";
+  form.method = "POST";
+  form.submit();
+}
+
+function showChildItems() {
+  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+  if (checked.length < 1) {
+    alert("通し番号を1件以上選択してください");
+    return;
+  }
+  let ids = Array.from(checked).map(cb => cb.value).join(',');
+  window.location.href = "/child_items?ids=" + encodeURIComponent(ids);
+}
+
+function bulkManagerChange() {
+  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+  if (checked.length < 1) {
+    alert("通し番号を1件以上選択してください");
+    return;
+  }
+  let ids = Array.from(checked).map(cb => cb.value).join(',');
+  window.location.href = "/bulk_manager_change?ids=" + encodeURIComponent(ids);
+}
+
+function submitReturnRequest() {
+  var form = document.getElementById('main-form');
+  form.action = "{{ url_for('return_request') }}";
+  form.method = "POST";
+  form.submit();
+}
+
+function changeOwners() {
+  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+  if (checked.length < 1) {
+    alert("通し番号を1件以上選択してください");
+    return;
+  }
+  let ids = Array.from(checked).map(cb => cb.value).join(',');
+  window.location.href = "/change_owner?ids=" + encodeURIComponent(ids);
+}
+
+function submitDisposeTransferRequest() {
+  var form = document.getElementById('main-form');
+  form.action = "{{ url_for('dispose_transfer_request') }}";
+  form.method = "POST";
+  form.submit();
+}
+
+function copyToAdd() {
+  const checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+  if (checked.length !== 1) {
+    alert("コピー起票するアイテムを1件だけ選択してください");
+    return;
+  }
+  const id = checked[0].value;
+  window.location.href = "/raise_request?copy_id=" + encodeURIComponent(id);
+}
+
+function showPrintLabels() {
+  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+  if (checked.length < 1) {
+    alert("1件以上選択してください");
+    return;
+  }
+  let ids = Array.from(checked).map(cb => cb.value).join(',');
+  window.open("/print_labels?ids=" + encodeURIComponent(ids), "_blank");
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<h1>アイテムリスト</h1>
+
+<!-- ====== Top Action Bar ====== -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div id="selected-counter" class="counter">選択: 0 件</div>
+
+    {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+    <div class="dropdown">
+      <button class="dropbtn">作成 / ラベル</button>
+      <div class="dropdown-menu">
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-        <div class="dropdown">
-        <button class="dropbtn">作成 / ラベル</button>
-        <div class="dropdown-menu">
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-            <a href="{{ url_for('raise_request', per_page=per_page, **filters) }}">起票（新規登録）</a>
-            <button type="button" onclick="copyToAdd()">起票（コピー：1件選択）</button>
-            <button type="button" onclick="showPrintLabels()">選択ラベル印刷</button>
-            {% endif %}
-        </div>
-        </div>
+        <a href="{{ url_for('raise_request', per_page=per_page, **filters) }}">起票（新規登録）</a>
+        <button type="button" onclick="copyToAdd()">起票（コピー：1件選択）</button>
+        <button type="button" onclick="showPrintLabels()">選択ラベル印刷</button>
         {% endif %}
-
-        {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
-        <div class="dropdown">
-        <button class="dropbtn">申請メニュー</button>
-        <div class="dropdown-menu">
-            <div class="group-title">申請</div>
-            <button type="button" onclick="submitApplyRequest()">入庫申請</button>
-            <button type="button" onclick="submitCheckoutRequest()">持ち出し申請</button>
-            <button type="button" onclick="submitReturnRequest()">持ち出し終了申請</button>
-            <button type="button" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
-            <a href="{{ url_for('my_applications') }}">申請済みアイテム</a>
-        </div>
-        </div>
-        {% endif %}
-
-        {% if 'admin' in g.user_roles or 'manager' %}
-        <div class="dropdown">
-        <button class="dropbtn">承認メニュー</button>
-        <div class="dropdown-menu">
-            <div class="group-title">承認</div>
-            <a href="{{ url_for('approval') }}">承認アイテム</a>
-        </div>
-        </div>
-        {% endif %}
-
-        <div class="dropdown">
-        <button class="dropbtn">一括操作</button>
-        <div class="dropdown-menu">
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-            <button type="button" onclick="changeOwners()">所有者を変更</button>
-            <button type="button" onclick="bulkManagerChange()">管理者を一括変更</button>
-            <button type="button" onclick="showChildItems()">アイテム詳細表示</button>
-            {% endif %}
-            {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
-            <button type="button" class="danger" onclick="submitDelete()">選択アイテムを削除</button>
-            {% endif %}
-        </div>
-        </div>
-    </div>
-
-    <div class="topbar-right">
-        {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-        <button id="top-save" class="primary">編集内容を一括保存</button>
-        {% endif %}
-    </div>
-    </div>
-    <!-- ====== /Top Action Bar ====== -->
-    {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="error-message">
-        {% for msg in messages %}
-          {{ msg }}<br>
-        {% endfor %}
       </div>
+    </div>
     {% endif %}
-    {% endwith %}
-    <form id="filter-form" method="get" action="{{ url_for('index') }}">
-        <input type="hidden" name="per_page" value="{{ per_page }}">
-        <table>
-            <tr>
-                <th class="col-checkbox"></th>
-                <th class="col-id">ID</th>
-                {% for f in fields %}
-                <th>{{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}</th>
-                {% endfor %}
-                <th>サンプル数</th>
-            </tr>
-            <tr id="filter-row" class="filter-row">
-                <td class="col-checkbox filter-cell"></td>
-                <td class="col-id filter-cell" data-filter-editable="true" data-col="id" style="position:relative;">
-                    <div class="filter-cell-input"
-                        tabindex="0"
-                        data-col="id"
-                        style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
-                    >{{ filters.get('id', '') }}</div>
-                    <input type="hidden" name="id_filter" value="{{ filters.get('id', '') }}">
-                    <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
-                    </div>
-                </td>
-                {% for f in fields %}
-                <td class="filter-cell" data-filter-editable="true"
-                    data-col="{{ f.key }}" style="position:relative;">
-                    <div class="filter-cell-input"
-                        tabindex="0"
-                        data-col="{{ f.key }}"
-                        style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
-                    >{{ filters.get(f.key, '') }}</div>
-                    <input type="hidden" name="{{f.key}}_filter" value="{{ filters.get(f.key, '') }}">
-                    <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
-                    </div>
-                </td>
-                {% endfor %}
-                <td class="filter-cell" data-filter-editable="true"
-                    data-col="sample_count" style="position:relative;">
-                <div class="filter-cell-input"
-                    tabindex="0"
-                    data-col="sample_count"
-                    style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
-                >{{ filters.get('sample_count', '') }}</div>
-                <input type="hidden" name="sample_count_filter" value="{{ filters.get('sample_count', '') }}">
-                <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
-                </div>
-                </td>
-            </tr>
-        </table>
-    </form>
-    <form id="main-form" method="post" action="{{ url_for('update_items', page=page, per_page=per_page, **filters) }}">
-        <table>
-            {% for item in items %}
-            <tr>
-                <td class="col-checkbox">
-                    <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
-                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
-                </td>
-                <td class="col-id">{{ item['id'] }}</td>
-                {% for f in fields %}
-                <td {% if not f.internal %}data-editable="true"{% endif %}>
-                    {{ item[f.key] }}
-                    <input type="hidden" name="{{f.key}}_{{item['id']}}" value="{{ item[f.key] }}">
-                </td>
-                {% endfor %}
-                <td>{{ item['sample_count'] }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-        <div class="pagination" style="margin:16px 0 8px 0;">
-          {% for p in range(1, page_count+1) %}
-            {% if p == page %}
-              <strong>{{p}}</strong>
-            {% else %}
-              <a href="{{ url_for('index', page=p, per_page=per_page, **filters) }}">{{p}}</a>
-            {% endif %}
-          {% endfor %}
+
+    {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
+    <div class="dropdown">
+      <button class="dropbtn">申請メニュー</button>
+      <div class="dropdown-menu">
+        <div class="group-title">申請</div>
+        <button type="button" onclick="submitApplyRequest()">入庫申請</button>
+        <button type="button" onclick="submitCheckoutRequest()">持ち出し申請</button>
+        <button type="button" onclick="submitReturnRequest()">持ち出し終了申請</button>
+        <button type="button" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
+        <a href="{{ url_for('my_applications') }}">申請済みアイテム</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if 'admin' in g.user_roles or 'manager' %}
+    <div class="dropdown">
+      <button class="dropbtn">承認メニュー</button>
+      <div class="dropdown-menu">
+        <div class="group-title">承認</div>
+        <a href="{{ url_for('approval') }}">承認アイテム</a>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="dropdown">
+      <button class="dropbtn">一括操作</button>
+      <div class="dropdown-menu">
+        {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+        <button type="button" onclick="changeOwners()">所有者を変更</button>
+        <button type="button" onclick="bulkManagerChange()">管理者を一括変更</button>
+        <button type="button" onclick="showChildItems()">アイテム詳細表示</button>
+        {% endif %}
+        {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
+        <button type="button" class="danger" onclick="submitDelete()">選択アイテムを削除</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="topbar-right">
+    {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
+    <button id="top-save" class="primary">編集内容を一括保存</button>
+    {% endif %}
+  </div>
+</div>
+<!-- ====== /Top Action Bar ====== -->
+
+{% with messages = get_flashed_messages() %}
+{% if messages %}
+  <div class="error-message">
+    {% for msg in messages %}
+      {{ msg }}<br>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endwith %}
+
+<form id="filter-form" method="get" action="{{ url_for('index') }}">
+  <input type="hidden" name="per_page" value="{{ per_page }}">
+  <table>
+    <tr>
+      <th class="col-checkbox"></th>
+      <th class="col-id">ID</th>
+      {% for f in fields %}
+      <th>{{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}</th>
+      {% endfor %}
+      <th>サンプル数</th>
+    </tr>
+    <tr id="filter-row" class="filter-row">
+      <td class="col-checkbox filter-cell"></td>
+      <td class="col-id filter-cell" data-filter-editable="true" data-col="id" style="position:relative;">
+        <div class="filter-cell-input"
+             tabindex="0"
+             data-col="id"
+             style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
+        >{{ filters.get('id', '') }}</div>
+        <input type="hidden" name="id_filter" value="{{ filters.get('id', '') }}">
+        <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
         </div>
-    </form>
-    <!-- ▼ 表示件数セレクタ -->
-    <div style="margin:10px 0 10px 0; display:flex; align-items:center;">
-      <form method="get" id="per-page-form" style="display:inline;">
-        {% for k, v in filters.items() %}
-          {% if v %}
-            <input type="hidden" name="{{k}}_filter" value="{{v}}">
-          {% endif %}
-        {% endfor %}
-        <select name="per_page" onchange="document.getElementById('per-page-form').submit()" style="font-size:14px; padding:4px 6px;">
-          <option value="20" {% if per_page == '20' %}selected{% endif %}>20件</option>
-          <option value="50" {% if per_page == '50' %}selected{% endif %}>50件</option>
-          <option value="100" {% if per_page == '100' %}selected{% endif %}>100件</option>
-          <option value="all" {% if per_page == 'all' %}selected{% endif %}>全て</option>
-        </select>
-        <input type="hidden" name="page" value="1">
-      </form>
-      <span style="margin-left:12px;">表示件数の変更</span>
-    </div>
-    <!-- ▲ 表示件数セレクタ -->
-    <div style="margin: 18px 0 0 0;">
-        <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
-    </div>
-</body>
-</html>
+      </td>
+      {% for f in fields %}
+      <td class="filter-cell" data-filter-editable="true"
+          data-col="{{ f.key }}" style="position:relative;">
+        <div class="filter-cell-input"
+             tabindex="0"
+             data-col="{{ f.key }}"
+             style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
+        >{{ filters.get(f.key, '') }}</div>
+        <input type="hidden" name="{{f.key}}_filter" value="{{ filters.get(f.key, '') }}">
+        <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
+        </div>
+      </td>
+      {% endfor %}
+      <td class="filter-cell" data-filter-editable="true"
+          data-col="sample_count" style="position:relative;">
+        <div class="filter-cell-input"
+             tabindex="0"
+             data-col="sample_count"
+             style="cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7;"
+        >{{ filters.get('sample_count', '') }}</div>
+        <input type="hidden" name="sample_count_filter" value="{{ filters.get('sample_count', '') }}">
+        <div class="filter-dropdown" style="display:none; position:absolute; left:0; top:25px; z-index:10; min-width:140px; max-height:180px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 8px #bbb8;">
+        </div>
+      </td>
+    </tr>
+  </table>
+</form>
+
+<form id="main-form" method="post" action="{{ url_for('update_items', page=page, per_page=per_page, **filters) }}">
+  <table>
+    {% for item in items %}
+    <tr>
+      <td class="col-checkbox">
+        <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
+        <input type="hidden" name="item_id" value="{{ item['id'] }}">
+      </td>
+      <td class="col-id">{{ item['id'] }}</td>
+      {% for f in fields %}
+      <td {% if not f.internal %}data-editable="true{% endif %}">
+        {{ item[f.key] }}
+        <input type="hidden" name="{{f.key}}_{{item['id']}}" value="{{ item[f.key] }}">
+      </td>
+      {% endfor %}
+      <td>{{ item['sample_count'] }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <div class="pagination" style="margin:16px 0 8px 0;">
+    {% for p in range(1, page_count+1) %}
+      {% if p == page %}
+        <strong>{{p}}</strong>
+      {% else %}
+        <a href="{{ url_for('index', page=p, per_page=per_page, **filters) }}">{{p}}</a>
+      {% endif %}
+    {% endfor %}
+  </div>
+</form>
+
+<!-- ▼ 表示件数セレクタ -->
+<div style="margin:10px 0 10px 0; display:flex; align-items:center;">
+  <form method="get" id="per-page-form" style="display:inline;">
+    {% for k, v in filters.items() %}
+      {% if v %}
+        <input type="hidden" name="{{k}}_filter" value="{{v}}">
+      {% endif %}
+    {% endfor %}
+    <select name="per_page" onchange="document.getElementById('per-page-form').submit()" style="font-size:14px; padding:4px 6px;">
+      <option value="20" {% if per_page == '20' %}selected{% endif %}>20件</option>
+      <option value="50" {% if per_page == '50' %}selected{% endif %}>50件</option>
+      <option value="100" {% if per_page == '100' %}selected{% endif %}>100件</option>
+      <option value="all" {% if per_page == 'all' %}selected{% endif %}>全て</option>
+    </select>
+    <input type="hidden" name="page" value="1">
+  </form>
+  <span style="margin-left:12px;">表示件数の変更</span>
+</div>
+<!-- ▲ 表示件数セレクタ -->
+
+<div style="margin: 18px 0 0 0;">
+  <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
+</div>
+{% endblock %}

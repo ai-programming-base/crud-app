@@ -28,11 +28,6 @@
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles  or 'proper' in g.user_roles %}
             <a href="{{ url_for('inventory_list') }}" class="btn">棚卸し一覧</a>
         {% endif %}
-        {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
-            <a href="{{ url_for('register') }}" class="btn">ユーザー追加</a>
-            <a href="{{ url_for('users_list') }}" class="btn">ユーザー一覧</a>
-            <a href="{{ url_for('select_field_config') }}" class="btn">起票フィールド選択肢設定</a>
-        {% endif %}
     </div>
 </body>
 </html>

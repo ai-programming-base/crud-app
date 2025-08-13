@@ -1,0 +1,59 @@
+<!-- templates/_header.html -->
+<div style="position: fixed; top: 0; left: 0; width: 100%;
+            height: var(--header-height);
+            padding: 0 30px;
+            display: flex; justify-content: space-between; align-items: center;
+            box-sizing: border-box; background: #fff; z-index: 100;">
+
+  <!-- 左：タイトル -->
+  <div style="font-size: 20px; font-weight: bold; color: #23468e;">
+    在庫管理システム
+  </div>
+
+  <!-- 右：ユーザー名＋設定メニュー＋ログアウト -->
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <span style="font-weight: bold; color: #3161c4;">
+      {{ g.user['username'] }} さん
+    </span>
+
+    {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
+    <!-- ▼ 設定メニュー -->
+    <div class="dropdown" style="position: relative;">
+      <button style="background: #f6f8fb; color: #223; border: 1px solid #d0d7e2;
+                     border-radius: 6px; padding: 6px 12px; cursor: pointer;">
+        設定
+      </button>
+      <div class="dropdown-menu"
+           style="display: none; position: absolute; right: 0; top: 100%; background: #fff;
+                  border: 1px solid #ccc; border-radius: 6px; min-width: 200px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        <a href="{{ url_for('register') }}" style="display: block; padding: 8px 12px; text-decoration: none; color: #333;">ユーザー追加</a>
+        <a href="{{ url_for('users_list') }}" style="display: block; padding: 8px 12px; text-decoration: none; color: #333;">ユーザー一覧</a>
+        <a href="{{ url_for('select_field_config') }}" style="display: block; padding: 8px 12px; text-decoration: none; color: #333;">起票フィールド選択肢設定</a>
+      </div>
+    </div>
+    {% endif %}
+    <!-- ▲ 設定メニュー -->
+
+    <a href="{{ url_for('logout') }}"
+       style="background: #db4437; color: #fff; padding: 6px 14px; border-radius: 6px;
+              text-decoration: none; font-weight: bold;">
+       ログアウト
+    </a>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('.dropdown').forEach(function(drop){
+    const btn = drop.querySelector('button');
+    const menu = drop.querySelector('.dropdown-menu');
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+    });
+    document.addEventListener('click', function(){
+      menu.style.display = 'none';
+    });
+  });
+});
+</script>
