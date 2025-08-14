@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from auth import authenticate
 from send_mail import send_mail
@@ -22,6 +22,8 @@ INDEX_FIELDS = [f for f in FIELDS if f.get('show_in_index')]
 FIELD_KEYS = [f['key'] for f in FIELDS]
 
 SELECT_FIELD_PATH = os.path.join(os.path.dirname(__file__), 'select_fields.json')
+
+LOCK_TTL_MIN = 30  # ロック有効期限（分）
 
 def load_select_fields():
     if os.path.exists(SELECT_FIELD_PATH):
@@ -438,6 +440,74 @@ def edit_user(user_id):
                            roles=roles,
                            current_role_ids=current_role_ids)
 
+def _now():
+    return datetime.now(timezone.utc)
+
+def _is_lock_expired(locked_at_str):
+    if not locked_at_str:
+        return True
+    try:
+        t = datetime.fromisoformat(locked_at_str)
+    except Exception:
+        return True
+    return (_now() - t) > timedelta(minutes=LOCK_TTL_MIN)
+
+def acquire_locks(db, ids, username):
+    """
+    指定ID群に対しロックを取得。誰かがロック中かつ未期限切れなら失敗。
+    ※ status は変更しない！
+    戻り値: (ok:bool, blocked:list[str]) 取得できなかったID
+    """
+    blocked = []
+    # 可能ならここで ids を int 正規化しておく
+    norm_ids = []
+    for item_id in ids:
+        try:
+            item_id = int(item_id)
+        except Exception:
+            blocked.append(str(item_id))
+            continue
+        norm_ids.append(item_id)
+
+        row = db.execute("SELECT locked_by, locked_at FROM item WHERE id=?", (item_id,)).fetchone()
+        if not row:
+            blocked.append(str(item_id)); continue
+        lb, la = row["locked_by"], row["locked_at"]
+        if lb and not _is_lock_expired(la) and lb != username:
+            blocked.append(str(item_id))
+
+    if blocked:
+        return False, blocked
+
+    # ロック取得（status は触らない）
+    now = _now().isoformat()
+    for item_id in norm_ids:
+        db.execute(
+            "UPDATE item SET locked_by=?, locked_at=? WHERE id=?",
+            (str(username or ""), now, item_id)
+        )
+    db.commit()
+    return True, []
+
+
+def release_locks(db, ids):
+    for item_id in ids:
+        db.execute(
+            "UPDATE item SET locked_by=NULL, locked_at=NULL WHERE id=?",
+            (item_id,)
+        )
+    db.commit()
+
+def _cleanup_expired_locks(db):
+    rows = db.execute("SELECT id, locked_at FROM item WHERE locked_by IS NOT NULL").fetchall()
+    expired_ids = [r["id"] for r in rows if _is_lock_expired(r["locked_at"])]
+    if expired_ids:
+        ph = ",".join(["?"]*len(expired_ids))
+        db.execute(f"UPDATE item SET locked_by=NULL, locked_at=NULL WHERE id IN ({ph})", expired_ids)
+        # “編集中” 表記も外す（任意：status を空にする/元に戻せないなら空）
+        db.execute(f"UPDATE item SET status='' WHERE id IN ({ph})", expired_ids)
+        db.commit()
+
 
 @app.route('/')
 @login_required
@@ -460,6 +530,7 @@ def index():
         offset = (page - 1) * per_page
 
     db = get_db()
+    _cleanup_expired_locks(db)
 
     # ===== フィルタ構築 =====
     filters = {}
@@ -669,27 +740,6 @@ def delete_selected():
         db = get_db()
         db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
         db.commit()
-    if request.form.get('from_menu') or request.args.get('from_menu'):
-        return redirect(url_for('menu'))
-    else:
-        return redirect(url_for('index'))
-
-@app.route('/update_items', methods=['POST'])
-@login_required
-def update_items():
-    db = get_db()
-    ids = request.form.getlist('item_id')
-    user_field_keys = [f['key'] for f in FIELDS if not f.get('internal', False) and f.get('show_in_index', True)]
-    for item_id in ids:
-        row_values = []
-        for key in user_field_keys:
-            row_values.append(request.form.get(f"{key}_{item_id}", ""))
-        set_clause = ", ".join([f"{key}=?" for key in user_field_keys])
-        db.execute(
-            f'UPDATE item SET {set_clause} WHERE id=?',
-            row_values + [item_id]
-        )
-    db.commit()
     if request.form.get('from_menu') or request.args.get('from_menu'):
         return redirect(url_for('menu'))
     else:
@@ -1968,6 +2018,87 @@ def print_labels():
         items=items_sorted,
         fields=fields
     )
+
+
+@app.route('/bulk_edit')
+@login_required
+def bulk_edit():
+    """
+    index から選択したID群を ?ids=1,2,3 で受けてロック→編集画面へ。
+    """
+    ids_raw = request.args.get('ids', '')
+    ids = [s for s in ids_raw.split(',') if s.strip()]
+    if not ids:
+        flash("編集対象の通し番号を選択してください。")
+        return redirect(url_for('index'))
+
+    db = get_db()
+
+    ok, blocked = acquire_locks(db, ids, g.user['username'])
+    if not ok:
+        flash("以下のIDは他ユーザーが編集中のため編集できません: " + ", ".join(blocked))
+        return redirect(url_for('index'))
+
+    # 編集対象の取得（index と同じ項目セット）
+    user_field_keys = [f['key'] for f in FIELDS if not f.get('internal', False) and f.get('show_in_index', True)]
+    # ID/サンプル数も index と同様に表示するため全列を取得
+    placeholders = ",".join(["?"]*len(ids))
+    rows = db.execute(f"SELECT * FROM item WHERE id IN ({placeholders}) ORDER BY id DESC", ids).fetchall()
+    items = [dict(r) for r in rows]
+
+    return render_template(
+        'edit.html',
+        items=items,
+        fields=[f for f in FIELDS if f.get('show_in_index', True)],  # index と同じ表示項目
+        user_field_keys=user_field_keys,
+    )
+
+@app.route('/bulk_edit/commit', methods=['POST'])
+@login_required
+def bulk_edit_commit():
+    db = get_db()
+    ids = request.form.getlist('item_id')
+
+    user_field_keys = [f['key'] for f in FIELDS if not f.get('internal', False) and f.get('show_in_index', True)]
+
+    for item_id in ids:
+        values = [request.form.get(f"{key}_{item_id}", "") for key in user_field_keys]
+        set_clause = ", ".join([f"{key}=?" for key in user_field_keys])
+        db.execute(f"UPDATE item SET {set_clause} WHERE id=?", values + [item_id])
+
+    db.commit()
+    # ロックのみ解除（statusは触らない）
+    release_locks(db, [int(x) for x in ids])
+    flash(f"{len(ids)}件の編集を反映しました。")
+    return redirect(url_for('index'))
+
+
+@app.route('/bulk_edit/cancel', methods=['POST'])
+@login_required
+def bulk_edit_cancel():
+    db = get_db()
+    ids = request.form.getlist('item_id')
+
+    # 値は保存せず、ロックのみ解除（statusは触らない）
+    release_locks(db, [int(x) for x in ids])
+    flash("編集をキャンセルし、ロックを解除しました。")
+    return redirect(url_for('index'))
+
+
+@app.route('/unlock_my_locks', methods=['POST'])
+@login_required
+def unlock_my_locks():
+    db = get_db()
+    # 自分がロックしている全IDを収集して解除
+    rows = db.execute("SELECT id FROM item WHERE locked_by=?", (g.user['username'],)).fetchall()
+    ids = [r["id"] for r in rows]
+    if ids:
+        release_locks(db, ids)
+        flash(f"{len(ids)}件のロックを解除しました。")
+    else:
+        flash("解除対象のロックはありません。")
+    return redirect(url_for('index'))
+
 
 if __name__ == '__main__':
     init_db()

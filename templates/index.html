@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+{% extends "_base.html" %}
 
 {% block title %}アイテムリスト{% endblock %}
 
@@ -10,7 +10,8 @@
     th.col-checkbox, td.col-checkbox {
         width: 36px; min-width: 36px; max-width: 38px; text-align: center;
     }
-    td.editing, td.filter-editing { background: #d0e3f7; }
+    /* 行内インライン編集は廃止。filter-editingのみ残す */
+    td.filter-editing { background: #d0e3f7; }
     .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
     .filter-indicator { color: #33691e; font-weight: bold; margin-left: 10px; font-size: 14px; background: #f5f5cc; border-radius: 4px; padding: 2px 8px; }
     .main-btn {
@@ -42,20 +43,20 @@
     .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
     /* ====== Top Action Bar ====== */
     .topbar {
-    position: sticky;
-    top: calc(var(--header-height) + 8px); /* ヘッダー直下に追従 */
-    z-index: 50;
-    width: fit-content;
-    margin: 8px 0 10px 12px;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    justify-content: flex-start;
-    background: #fff;
-    border: 1px solid #dfe3ea;
-    border-radius: 8px;
-    padding: 8px 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+      position: sticky;
+      top: calc(var(--header-height) + 8px);
+      z-index: 50;
+      width: fit-content;
+      margin: 8px 0 10px 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-start;
+      background: #fff;
+      border: 1px solid #dfe3ea;
+      border-radius: 8px;
+      padding: 8px 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
     .topbar-left, .topbar-right {
       display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -109,247 +110,177 @@
       text-align: center;
       cursor: pointer;
       user-select: none;
-      display: none; /* 値がある時だけJSで表示 */
+      display: none;
       z-index: 20;
       transition: background 0.15s ease, transform 0.15s ease;
     }
-    .filter-clear:hover {
-      background: #999;
-      transform: translateY(-50%) scale(1.1);
+    .filter-clear:hover { background: #999; transform: translateY(-50%) scale(1.1); }
+    .filter-clear:active { background: #777; transform: translateY(-50%) scale(0.95); }
+    .locked-row { opacity: 0.6; }
+    .lock-icon {
+      font-size: 14px;
+      color: #c62828;
+      margin-left: 4px;
+      cursor: help; /* ホバーでヘルプカーソル */
+      user-select: none;
     }
-    .filter-clear:active {
-      background: #777;
-      transform: translateY(-50%) scale(0.95);
-    }
+    /* 行が半透明でも鍵だけははっきり見せたい場合 */
+    .locked-row .lock-icon { opacity: 1; }
 </style>
 
 <script>
+// ====== フィルタセル（オートコンプリート＋Enterで送信） ======
 document.addEventListener('DOMContentLoaded', function () {
-    // Excelライク編集
-    const table = document.querySelector('form#main-form table');
-    const rows = Array.from(table.querySelectorAll('tr'));
-    const dataRowStart = rows.findIndex(r => r.querySelector('td[data-editable="true"]'));
-    const dataRows = rows.slice(dataRowStart);
-    const cellMatrix = dataRows.map(row =>
-        Array.from(row.querySelectorAll('td[data-editable="true"]'))
-    );
-    const allCells = cellMatrix.flat();
-
-    allCells.forEach((td, idx) => {
-        td.addEventListener('click', function(e) {
-            if (td.classList.contains('editing')) return;
-            td.classList.add('editing');
-            let oldValue = td.innerText.trim();
-            td.contentEditable = true;
-            td.focus();
-
-            let pos = null;
-            outer: for (let i = 0; i < cellMatrix.length; i++) {
-                for (let j = 0; j < cellMatrix[i].length; j++) {
-                    if (cellMatrix[i][j] === td) {
-                        pos = {row: i, col: j};
-                        break outer;
-                    }
-                }
-            }
-
-            function finishEdit() {
-                td.classList.remove('editing');
-                td.contentEditable = false;
-                td.removeEventListener('blur', finishEdit);
-                td.removeEventListener('keydown', keyHandler);
-                let hidden = td.querySelector('input[type="hidden"]');
-                if (hidden) hidden.value = td.innerText.trim();
-            }
-            function keyHandler(e) {
-                if (e.key === 'Tab') {
-                    e.preventDefault();
-                    td.blur();
-                    let nextIdx = idx + (e.shiftKey ? -1 : 1);
-                    if (nextIdx >= 0 && nextIdx < allCells.length) {
-                        setTimeout(() => {
-                            allCells[nextIdx].click();
-                        }, 1);
-                    }
-                } else if (e.key === 'Enter') {
-                    e.preventDefault();
-                    td.blur();
-                    if (!pos) return;
-                    let nextRow = pos.row + (e.shiftKey ? -1 : 1);
-                    if (nextRow >= 0 && nextRow < cellMatrix.length) {
-                        let sameColCell = cellMatrix[nextRow][pos.col];
-                        if (sameColCell) {
-                            setTimeout(() => {
-                                sameColCell.click();
-                            }, 1);
-                        }
-                    }
-                } else if (e.key === 'Escape') {
-                    td.innerText = oldValue;
-                    td.blur();
-                }
-            }
-            td.addEventListener('blur', finishEdit);
-            td.addEventListener('keydown', keyHandler);
-        });
+  // フィルタ行用：Enterで即submit
+  document.querySelectorAll('td[data-filter-editable="true"]').forEach(function(td) {
+    let input = td.querySelector('input');
+    td.addEventListener('click', function(e) { input && input.focus(); });
+    if (!input) return;
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('filter-form').submit();
+      }
     });
+  });
 
-    document.querySelectorAll('td[data-filter-editable="true"]').forEach(function(td) {
-        let input = td.querySelector('input');
-        td.addEventListener('click', function(e) { input && input.focus(); });
-        if (!input) return;
-        input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                document.getElementById('filter-form').submit();
-            }
-        });
-    });
+  // オートコンプリート（候補辞書はサーバから）
+  var filterChoices = {{ filter_choices_dict | tojson }};
+  document.querySelectorAll('.filter-cell-input').forEach(function(div){
+      let col = div.dataset.col;
+      let choices = (filterChoices[col] || []).slice();
 
-    var filterChoices = {{ filter_choices_dict | tojson }};
-    document.querySelectorAll('.filter-cell-input').forEach(function(div){
-        let col = div.dataset.col;
-        let choices = (filterChoices[col] || []).slice();
+      let dropdown = div.parentElement.querySelector('.filter-dropdown');
+      let hidden = div.parentElement.querySelector('input[type="hidden"]');
+      let state = { open:false, value:div.textContent.trim(), filtered:choices.slice(), selected:-1 };
 
-        let dropdown = div.parentElement.querySelector('.filter-dropdown');
-        let hidden = div.parentElement.querySelector('input[type="hidden"]');
-        let state = { open:false, value:div.textContent.trim(), filtered:choices.slice(), selected:-1 };
+      // クリアボタン
+      const td = div.parentElement;
+      let clearBtn = td.querySelector('.filter-clear');
+      if (!clearBtn) {
+          clearBtn = document.createElement('div');
+          clearBtn.className = 'filter-clear';
+          clearBtn.setAttribute('title', 'クリア');
+          clearBtn.textContent = '×';
+          td.appendChild(clearBtn);
+      }
+      function showOrHideClear() {
+          const hasValue = (div.textContent.trim() || (hidden && hidden.value.trim()));
+          clearBtn.style.display = hasValue ? 'block' : 'none';
+      }
+      showOrHideClear();
 
-        // ▼ クリアボタン（×）
-        const td = div.parentElement;
-        let clearBtn = td.querySelector('.filter-clear');
-        if (!clearBtn) {
-            clearBtn = document.createElement('div');
-            clearBtn.className = 'filter-clear';
-            clearBtn.setAttribute('title', 'クリア');
-            clearBtn.textContent = '×';
-            td.appendChild(clearBtn);
-        }
+      clearBtn.addEventListener('mousedown', function(e){
+          e.preventDefault();
+          e.stopPropagation();
+          div.textContent = '';
+          if (hidden) hidden.value = '';
+          state.value = '';
+          state.selected = -1;
+          updateDropdown(); closeDropdown(); showOrHideClear();
+          setTimeout(function(){ document.getElementById('filter-form').submit(); }, 10);
+      });
 
-        function showOrHideClear() {
-            const hasValue = (div.textContent.trim() || (hidden && hidden.value.trim()));
-            clearBtn.style.display = hasValue ? 'block' : 'none';
-        }
-        showOrHideClear();
+      div.addEventListener('input', showOrHideClear);
+      div.addEventListener('blur', function(){ setTimeout(showOrHideClear, 0); });
 
-        clearBtn.addEventListener('mousedown', function(e){
-            e.preventDefault();
-            e.stopPropagation();
+      function openDropdown() {
+          state.open = true;
+          dropdown.style.display = '';
+          updateDropdown();
+      }
+      function closeDropdown() {
+          state.open = false;
+          dropdown.style.display = 'none';
+          state.selected = -1;
+      }
+      function updateDropdown() {
+          let txt = state.value;
+          let filtered = !txt ? choices.slice() : choices.filter(v => v && v.indexOf(txt) !== -1);
+          state.filtered = filtered;
+          dropdown.innerHTML = '';
+          filtered.forEach((v, idx) => {
+              let opt = document.createElement('div');
+              opt.textContent = v;
+              opt.tabIndex = -1;
+              opt.style.cssText = 'padding:3px 7px; cursor:pointer;';
+              if (idx === state.selected) {
+                  opt.style.background = '#b1dafc';
+              }
+              opt.addEventListener('mousedown', function(e){
+                  e.preventDefault();
+                  choose(idx);
+              });
+              dropdown.appendChild(opt);
+          });
+      }
+      function choose(idx) {
+          let v = state.filtered[idx] || '';
+          div.textContent = v;
+          if (hidden) hidden.value = v;
+          closeDropdown();
+          setTimeout(function(){
+              document.getElementById('filter-form').submit();
+          }, 10);
+      }
+      function startEdit() {
+          div.classList.add('filter-editing');
+          div.contentEditable = true;
+          div.focus();
+          state.value = div.textContent.trim();
+          state.selected = -1;
+          openDropdown();
+          updateDropdown();
+      }
+      function finishEdit() {
+          div.classList.remove('filter-editing');
+          div.contentEditable = false;
+          closeDropdown();
+          div.textContent = state.value;
+          if (hidden) hidden.value = state.value;
+      }
 
-            div.textContent = '';
-            if (hidden) hidden.value = '';
-            state.value = '';
-            state.selected = -1;
-
-            if (typeof updateDropdown === 'function') updateDropdown();
-            if (typeof closeDropdown === 'function') closeDropdown();
-
-            showOrHideClear();
-            setTimeout(function(){
-                document.getElementById('filter-form').submit();
-            }, 10);
-        });
-
-        div.addEventListener('input', showOrHideClear);
-        div.addEventListener('blur', function(){ setTimeout(showOrHideClear, 0); });
-
-        function openDropdown() {
-            state.open = true;
-            dropdown.style.display = '';
-            updateDropdown();
-        }
-        function closeDropdown() {
-            state.open = false;
-            dropdown.style.display = 'none';
-            state.selected = -1;
-        }
-        function updateDropdown() {
-            let txt = state.value;
-            let filtered = !txt ? choices.slice() : choices.filter(v => v && v.indexOf(txt) !== -1);
-            state.filtered = filtered;
-            dropdown.innerHTML = '';
-            filtered.forEach((v, idx) => {
-                let opt = document.createElement('div');
-                opt.textContent = v;
-                opt.tabIndex = -1;
-                opt.style.cssText = 'padding:3px 7px; cursor:pointer;';
-                if (idx === state.selected) {
-                    opt.style.background = '#b1dafc';
-                }
-                opt.addEventListener('mousedown', function(e){
-                    e.preventDefault();
-                    choose(idx);
-                });
-                dropdown.appendChild(opt);
-            });
-        }
-        function choose(idx) {
-            let v = state.filtered[idx] || '';
-            div.textContent = v;
-            if (hidden) hidden.value = v;
-            closeDropdown();
-            setTimeout(function(){
-                document.getElementById('filter-form').submit();
-            }, 10);
-        }
-        function startEdit() {
-            div.classList.add('filter-editing');
-            div.contentEditable = true;
-            div.focus();
-            state.value = div.textContent.trim();
-            state.selected = -1;
-            openDropdown();
-            updateDropdown();
-        }
-        function finishEdit() {
-            div.classList.remove('filter-editing');
-            div.contentEditable = false;
-            closeDropdown();
-            div.textContent = state.value;
-            if (hidden) hidden.value = state.value;
-        }
-
-        div.addEventListener('click', function(){
-            if (!state.open) startEdit();
-        });
-        div.addEventListener('input', function(){
-            state.value = div.textContent.trim();
-            state.selected = -1;
-            updateDropdown();
-        });
-        div.addEventListener('keydown', function(e){
-            if (!state.open) return;
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                if (state.selected < state.filtered.length - 1) {
-                    state.selected++;
-                    updateDropdown();
-                }
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                if (state.selected > 0) {
-                    state.selected--;
-                    updateDropdown();
-                }
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (state.selected >= 0 && state.filtered.length) {
-                    choose(state.selected);
-                } else {
-                    finishEdit();
-                    setTimeout(function(){
-                        document.getElementById('filter-form').submit();
-                    }, 10);
-                }
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                finishEdit();
-            }
-        });
-        div.addEventListener('blur', function(){
-            setTimeout(finishEdit, 150);
-        });
-    });
+      div.addEventListener('click', function(){
+          if (!state.open) startEdit();
+      });
+      div.addEventListener('input', function(){
+          state.value = div.textContent.trim();
+          state.selected = -1;
+          updateDropdown();
+      });
+      div.addEventListener('keydown', function(e){
+          if (!state.open) return;
+          if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              if (state.selected < state.filtered.length - 1) {
+                  state.selected++;
+                  updateDropdown();
+              }
+          } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              if (state.selected > 0) {
+                  state.selected--;
+                  updateDropdown();
+              }
+          } else if (e.key === 'Enter') {
+              e.preventDefault();
+              if (state.selected >= 0 && state.filtered.length) {
+                  choose(state.selected);
+              } else {
+                  finishEdit();
+                  setTimeout(function(){
+                      document.getElementById('filter-form').submit();
+                  }, 10);
+              }
+          } else if (e.key === 'Escape') {
+              e.preventDefault();
+              finishEdit();
+          }
+      });
+      div.addEventListener('blur', function(){
+          setTimeout(finishEdit, 150);
+      });
+  });
 });
 
 // ====== Topbar: dropdownと選択件数 ======
@@ -377,14 +308,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (e.target && e.target.name === 'selected_ids') updateCounter();
   });
   updateCounter();
-
-  // 「一括保存」ボタン（トップバー）
-  const topSaveBtn = document.getElementById('top-save');
-  if (topSaveBtn) {
-    topSaveBtn.addEventListener('click', () => {
-      document.getElementById('main-form').submit();
-    });
-  }
 });
 
 // 操作用関数群
@@ -472,6 +395,21 @@ function showPrintLabels() {
   let ids = Array.from(checked).map(cb => cb.value).join(',');
   window.open("/print_labels?ids=" + encodeURIComponent(ids), "_blank");
 }
+
+function bulkEdit() {
+  const checked = document.querySelectorAll('input[name="selected_ids"]:checked');
+  if (checked.length < 1) {
+    alert("通し番号を1件以上選択してください");
+    return;
+  }
+  const ids = Array.from(checked).map(cb => cb.value).join(',');
+  window.location.href = "/bulk_edit?ids=" + encodeURIComponent(ids);
+}
+
+function unlockMyLocks() {
+  if (!confirm('自分がロックしているアイテムの編集をすべて解除します。よろしいですか？')) return;
+  document.getElementById('unlock-form').submit();
+}
 </script>
 {% endblock %}
 
@@ -536,9 +474,15 @@ function showPrintLabels() {
   </div>
 
   <div class="topbar-right">
-    {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-    <button id="top-save" class="primary">編集内容を一括保存</button>
-    {% endif %}
+    <!-- ▼ 新規：編集ドロップダウン -->
+    <div class="dropdown">
+      <button class="dropbtn">編集</button>
+      <div class="dropdown-menu">
+        <button type="button" onclick="bulkEdit()">一括編集</button>
+        <button type="button" onclick="unlockMyLocks()">編集を解除</button>
+      </div>
+    </div>
+    <!-- ▲ 新規ここまで -->
   </div>
 </div>
 <!-- ====== /Top Action Bar ====== -->
@@ -604,20 +548,24 @@ function showPrintLabels() {
   </table>
 </form>
 
-<form id="main-form" method="post" action="{{ url_for('update_items', page=page, per_page=per_page, **filters) }}">
+<form id="main-form" method="post">
   <table>
     {% for item in items %}
-    <tr>
+    {% set me = g.user['username'] if g.user is mapping and 'username' in g.user else g.user %}
+    {% set locked = item['locked_by'] and item['locked_by'] != me %}
+    <tr class="{{ 'locked-row' if locked }}">
       <td class="col-checkbox">
-        <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
+        <input type="checkbox" name="selected_ids" value="{{ item['id'] }}" {% if locked %}disabled{% endif %}>
         <input type="hidden" name="item_id" value="{{ item['id'] }}">
+        {% if locked %}
+          <span class="lock-icon"
+                title="編集中({{ item['locked_by'] }})"
+                aria-label="編集中({{ item['locked_by'] }})">🔒</span>
+        {% endif %}
       </td>
       <td class="col-id">{{ item['id'] }}</td>
       {% for f in fields %}
-      <td {% if not f.internal %}data-editable="true{% endif %}">
-        {{ item[f.key] }}
-        <input type="hidden" name="{{f.key}}_{{item['id']}}" value="{{ item[f.key] }}">
-      </td>
+        <td>{{ item[f.key] }}</td>
       {% endfor %}
       <td>{{ item['sample_count'] }}</td>
     </tr>
@@ -634,6 +582,9 @@ function showPrintLabels() {
     {% endfor %}
   </div>
 </form>
+
+<!-- 自分のロック全解除 用の隠しフォーム -->
+<form id="unlock-form" method="post" action="{{ url_for('unlock_my_locks') }}"></form>
 
 <!-- ▼ 表示件数セレクタ -->
 <div style="margin:10px 0 10px 0; display:flex; align-items:center;">

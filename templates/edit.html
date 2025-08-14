@@ -1,0 +1,192 @@
+{% extends "_base.html" %}
+{% block title %}一括編集{% endblock %}
+
+{% block head %}
+<style>
+  table { border-collapse: collapse; width: 98%; table-layout: fixed; }
+  th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
+  th { background: #eee; }
+  .main-btn {
+    background: #4285f4; color: #fff; border: none; border-radius: 4px;
+    font-size: 1rem; font-weight: bold; padding: 6px 16px; margin-right: 8px;
+    cursor: pointer; text-decoration: none; transition: background .15s;
+  }
+  .main-btn:hover { background: #23468e; color: #fff; }
+  .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+  /* 編集中セルの見た目 */
+  td.editing { background: #d0e3f7; }
+  /* バリデーションNG時のハイライト */
+  td.invalid { outline: 2px solid #db4437; background: #fdecea; }
+</style>
+
+<script>
+// === Excelライク編集（このページ専用） ===
+document.addEventListener('DOMContentLoaded', function () {
+  const table = document.getElementById('edit-table');
+  if (!table) return;
+
+  const rows = Array.from(table.querySelectorAll('tbody tr'));
+  const cellMatrix = rows.map(row =>
+    Array.from(row.querySelectorAll('td[data-editable="true"]'))
+  );
+  const allCells = cellMatrix.flat();
+
+  allCells.forEach((td, idx) => {
+    td.addEventListener('click', function () {
+      if (td.classList.contains('editing')) return;
+      startEdit(td, idx);
+    });
+  });
+
+  function startEdit(td, idx) {
+    td.classList.add('editing');
+    const oldValue = td.innerText.trim();
+
+    // 編集開始
+    td.contentEditable = true;
+    td.focus();
+
+    // 自身の位置（row, col）を特定
+    let pos = null;
+    outer: for (let i = 0; i < cellMatrix.length; i++) {
+      for (let j = 0; j < cellMatrix[i].length; j++) {
+        if (cellMatrix[i][j] === td) { pos = { row: i, col: j }; break outer; }
+      }
+    }
+
+    function finishEdit(commit = true) {
+      td.classList.remove('editing');
+      td.contentEditable = false;
+      td.removeEventListener('blur', onBlur);
+      td.removeEventListener('keydown', onKeydown);
+      if (commit) {
+        const hidden = td.querySelector('input[type="hidden"]');
+        if (hidden) hidden.value = td.innerText.trim();
+        td.classList.remove('invalid'); // 再編集でOKになったら外す
+      } else {
+        td.innerText = oldValue; // Escで元に戻す
+      }
+    }
+
+    function moveToCell(nextTd) {
+      if (!nextTd) return;
+      setTimeout(() => { nextTd.click(); }, 1);
+    }
+
+    function onKeydown(e) {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        finishEdit(true);
+        const nextIdx = idx + (e.shiftKey ? -1 : 1);
+        if (nextIdx >= 0 && nextIdx < allCells.length) {
+          moveToCell(allCells[nextIdx]);
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        finishEdit(true);
+        if (!pos) return;
+        const nextRow = pos.row + (e.shiftKey ? -1 : 1);
+        if (nextRow >= 0 && nextRow < cellMatrix.length) {
+          const sameColCell = cellMatrix[nextRow][pos.col];
+          moveToCell(sameColCell);
+        }
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finishEdit(false);
+      }
+    }
+
+    function onBlur() { finishEdit(true); }
+
+    td.addEventListener('keydown', onKeydown);
+    td.addEventListener('blur', onBlur);
+  }
+
+  // 送信時の必須チェック（data-required=true のセルのhidden値が空ならエラー）
+  const form = document.getElementById('edit-form');
+  const errorBox = document.getElementById('error-box');
+  form.addEventListener('submit', function (e) {
+    let invalids = [];
+    const requiredTds = table.querySelectorAll('td[data-editable="true"][data-required="true"]');
+    requiredTds.forEach(td => {
+      // 編集中のセルがあれば確定させる
+      if (td.classList.contains('editing')) {
+        td.blur();
+      }
+      const hidden = td.querySelector('input[type="hidden"]');
+      const val = hidden ? hidden.value.trim() : td.innerText.trim();
+      if (!val) {
+        td.classList.add('invalid');
+        invalids.push(td);
+      } else {
+        td.classList.remove('invalid');
+      }
+    });
+    if (invalids.length) {
+      e.preventDefault();
+      errorBox.textContent = `必須項目が未入力のセルがあります（${invalids.length}件）。赤枠のセルを入力してください。`;
+      invalids[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // 先頭セルを即編集状態に
+      setTimeout(() => invalids[0].click(), 150);
+    } else {
+      errorBox.textContent = '';
+    }
+  });
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<h1>一括編集</h1>
+
+<div id="error-box" class="error-message"></div>
+
+<form id="edit-form" method="post" action="{{ url_for('bulk_edit_commit') }}">
+  <table id="edit-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        {% for f in fields %}
+          <th>{{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+    {% for item in items %}
+      <tr>
+        <td>
+          {{ item['id'] }}
+          <input type="hidden" name="item_id" value="{{ item['id'] }}">
+        </td>
+
+        {% for f in fields %}
+          {% set key = f.key %}
+          {% if not f.internal and f.show_in_index %}
+            <td data-editable="true" {% if f.required %}data-required="true"{% endif %}>
+              {{ item.get(key, '') }}
+              <input type="hidden" name="{{ key }}_{{ item['id'] }}" value="{{ item.get(key, '') or '' }}">
+            </td>
+          {% else %}
+            <td>{{ item.get(key, '') }}</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div style="margin-top:12px; display:flex; gap:8px;">
+    <button type="submit" class="main-btn">編集完了（保存）</button>
+    <a href="{{ url_for('index') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">一覧に戻る</a>
+  </div>
+</form>
+
+<form method="post" action="{{ url_for('bulk_edit_cancel') }}" style="display:inline;">
+  {% for item in items %}
+    <input type="hidden" name="item_id" value="{{ item['id'] }}">
+  {% endfor %}
+  <button type="submit" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4; margin-top:12px;">
+    取消（ロック解除して戻る）
+  </button>
+</form>
+{% endblock %}
