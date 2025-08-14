@@ -126,6 +126,15 @@
     }
     /* 行が半透明でも鍵だけははっきり見せたい場合 */
     .locked-row .lock-icon { opacity: 1; }
+    /* 行クリック可能の見た目 */
+    #main-form table tr { cursor: pointer; transition: background-color .12s ease; }
+    #main-form table tr.locked-row { cursor: default; }
+    #main-form table tr:not(.locked-row):hover td {
+      background: #eef6ff;  /* 好みで #e9f1ff などに変更可 */
+    }
+    #main-form table tr.locked-row:hover td {
+      background: inherit;
+    }
 </style>
 
 <script>
@@ -410,6 +419,28 @@ function unlockMyLocks() {
   if (!confirm('自分がロックしているアイテムの編集をすべて解除します。よろしいですか？')) return;
   document.getElementById('unlock-form').submit();
 }
+
+// ====== 行クリックでチェックボックスをトグル ======
+document.addEventListener('DOMContentLoaded', function () {
+  const dataTable = document.querySelector('#main-form table');
+  if (!dataTable) return;
+
+  dataTable.addEventListener('click', function (e) {
+    // 入力系やリンク上のクリックは素通し
+    const tag = e.target.tagName.toLowerCase();
+    if (['input','button','a','select','textarea','label'].includes(tag)) return;
+
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+
+    const cb = tr.querySelector('input[type="checkbox"][name="selected_ids"]');
+    if (!cb || cb.disabled) return; // ロック行はdisabledなので何もしない
+
+    cb.checked = !cb.checked;
+    // 選択カウンタ更新のために change を飛ばす
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});
 </script>
 {% endblock %}
 
