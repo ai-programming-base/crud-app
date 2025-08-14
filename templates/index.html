@@ -474,7 +474,6 @@ function unlockMyLocks() {
   </div>
 
   <div class="topbar-right">
-    <!-- ▼ 新規：編集ドロップダウン -->
     <div class="dropdown">
       <button class="dropbtn">編集</button>
       <div class="dropdown-menu">
@@ -482,7 +481,12 @@ function unlockMyLocks() {
         <button type="button" onclick="unlockMyLocks()">編集を解除</button>
       </div>
     </div>
-    <!-- ▲ 新規ここまで -->
+    <div class="dropdown">
+      <button class="dropbtn">棚卸</button>
+      <div class="dropdown-menu">
+        <a href="{{ url_for('inventory_list') }}">棚卸一覧</a>
+      </div>
+    </div>
   </div>
 </div>
 <!-- ====== /Top Action Bar ====== -->
@@ -605,8 +609,4 @@ function unlockMyLocks() {
   <span style="margin-left:12px;">表示件数の変更</span>
 </div>
 <!-- ▲ 表示件数セレクタ -->
-
-<div style="margin: 18px 0 0 0;">
-  <a href="{{ url_for('menu') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">機能選択メニューに戻る</a>
-</div>
 {% endblock %}

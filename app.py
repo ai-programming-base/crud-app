@@ -232,7 +232,7 @@ def login():
                 user_id = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()['id']
                 db.commit()
             session['user_id'] = user_id
-            return redirect(url_for('menu'))
+            return redirect(url_for('index'))
         else:
             flash(auth_result.get('reason') or "ログインに失敗しました")
     return render_template('login.html')
@@ -509,13 +509,13 @@ def _cleanup_expired_locks(db):
         db.commit()
 
 
-@app.route('/')
+@app.route('/menu')
 @login_required
 def menu():
     return render_template('menu.html')
 
 
-@app.route('/list')
+@app.route('/')
 @login_required
 def index():
     # ページ件数指定: ?per_page=10/20/50/100/all
