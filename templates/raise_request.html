@@ -183,6 +183,7 @@
         <tr>
             <th>フィールド名</th>
             <th>値</th>
+            <th>入力例</th>
         </tr>
         {% for f in fields %}
         <tr>
@@ -196,7 +197,7 @@
                     <select name="{{ f.key }}" class="cell-select">
                         <option value="">Select</option>
                         {% for opt in select_fields[f.key] %}
-                          <option value="{{ opt }}" {% if values[f.key] == opt %}selected{% endif %}>{{ opt }}</option>
+                        <option value="{{ opt }}" {% if values[f.key] == opt %}selected{% endif %}>{{ opt }}</option>
                         {% endfor %}
                     </select>
                 </span>
@@ -213,9 +214,14 @@
                 {{ values[f.key]|default('') }}
             </td>
             {% endif %}
+            <td>
+                {{ f.example | default('') }}
+            </td>
         </tr>
         {% endfor %}
     </table>
+    <p style="color:#555;margin-top:4px;">※<span style="color:#db4437;">*</span>は入力必須項目です。</p>
+
     <div class="button-group">
         <button type="submit" name="add" class="main-btn">追加</button>
         <button type="submit" name="add_and_next" class="main-btn">追加して次を入力</button>
