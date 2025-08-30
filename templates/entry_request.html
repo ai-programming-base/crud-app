@@ -1,4 +1,3 @@
-{# templates/inbound_request.html #}
 {% extends "_base.html" %}
 
 {% block title %}入庫申請{% endblock %}
@@ -26,8 +25,60 @@
     .form-field { margin-bottom: 12px; }
     .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
     .form-input, .form-textarea, .form-select { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+    .form-input[type="date"] {
+        width: 140px;
+        min-width: 100px;
+        max-width: 180px;
+    }
     .form-textarea { height: 56px; resize: vertical; }
     .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+    .suggest-list { 
+        position: absolute; background: #fff; border: 1px solid #bbb; border-radius: 6px;
+        box-shadow: 0 2px 8px #bbb8; z-index: 100; min-width: 320px; max-height: 180px; overflow-y: auto;
+        display: none;
+    }
+    .suggest-item {
+        padding: 6px 16px; cursor: pointer;
+    }
+    .suggest-item:hover, .suggest-item.active {
+        background: #e3f2fd;
+    }
+    .relative { position: relative; }
+    .input-clear-wrap {
+        position: relative;
+        display: inline-block;
+        width: 320px;
+        vertical-align: middle;
+    }
+    .form-input {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .clear-btn {
+        position: absolute;
+        right: 6px;
+        top: 55%;  /* ← 50%から55%に変更 */
+        transform: translateY(-40%); /* ← これで真ん中より少し下 */
+        cursor: pointer;
+        font-size: 1.03em;
+        color: #bbb;
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        line-height: 1;
+        display: none;
+        z-index: 10;
+        width: 1.3em;
+        height: 1.3em;
+        text-align: center;
+        transition: color 0.13s;
+        user-select: none;
+    }
+    .clear-btn:hover {
+        color: #888;
+        background: none;
+    }
 </style>
 {% endblock %}
 
@@ -66,10 +117,15 @@
         {% endfor %}
     </table>
     <div style="margin-top: 24px; margin-bottom: 8px;">
-        <!-- 管理者欄（最上部） -->
-        <div class="form-field">
-            <label class="form-label" for="manager">管理者</label>
-            <input class="form-input" type="text" id="manager" name="manager" value="">
+        <!-- 管理者欄（サジェスト化＋クリアボタン付） -->
+        <div class="form-field relative">
+            <label class="form-label" for="manager_input">管理者</label>
+            <div class="input-clear-wrap">
+                <input class="form-input" type="text" id="manager_input" autocomplete="off" value="" placeholder="管理者を入力">
+                <span id="manager_clear" class="clear-btn" title="クリア">&#10005;</span>
+            </div>
+            <input type="hidden" id="manager" name="manager" value="">
+            <div id="manager_suggest" class="suggest-list"></div>
         </div>
         <!-- チェックボックス -->
         <div class="form-field">
@@ -153,29 +209,113 @@
 </div>
 {% endif %}
 <script>
-    // 日付セット
-    function getToday() {
-        const d = new Date();
-        return d.toISOString().slice(0, 10);
+    {% if error_dialog_message %}
+        alert("{{ error_dialog_message|escapejs }}");
+    {% endif %}
+    // properユーザーサジェスト
+    const properUsers = {{ proper_users|tojson|safe }};
+    const myUsername = "{{ manager_default|e }}";
+    const myUser = properUsers.find(u => u.username === myUsername);
+
+    function formatUser(user) {
+        return (user.department ? user.department : "") + " " + user.realname;
     }
-    function getThreeMonthLast() {
-        const now = new Date();
-        const y = now.getFullYear();
-        const m = now.getMonth();
-        const after3 = new Date(y, m + 3, 1);
-        const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
-        // 日本のローカル表記にする
-        return lastDay.toLocaleDateString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit'})
-                    .replace(/\//g, '-');
+
+    function showSuggestList(users) {
+        const suggest = document.getElementById('manager_suggest');
+        suggest.innerHTML = "";
+        users.forEach(user => {
+            const div = document.createElement('div');
+            div.className = "suggest-item";
+            div.textContent = formatUser(user);
+            div.dataset.username = user.username;
+            div.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                document.getElementById('manager_input').value = formatUser(user);
+                document.getElementById('manager').value = user.username;
+                suggest.style.display = "none";
+                document.getElementById('manager_clear').style.display = "inline";
+            });
+            suggest.appendChild(div);
+        });
+        if (users.length > 0) {
+            suggest.style.display = "block";
+        } else {
+            suggest.style.display = "none";
+        }
     }
 
     document.addEventListener("DOMContentLoaded", function() {
+        // 管理者欄サジェスト初期化
+        const input = document.getElementById('manager_input');
+        const hidden = document.getElementById('manager');
+        const suggest = document.getElementById('manager_suggest');
+        const clearBtn = document.getElementById('manager_clear');
+
+        // デフォルト：自分
+        if (myUser) {
+            input.value = formatUser(myUser);
+            hidden.value = myUser.username;
+            clearBtn.style.display = "inline";
+        } else {
+            input.value = "";
+            hidden.value = "";
+            clearBtn.style.display = "none";
+        }
+
+        input.addEventListener('focus', function() {
+            // 候補リスト表示
+            showSuggestList(properUsers);
+        });
+        input.addEventListener('input', function(e) {
+            const val = input.value;
+            if (val.length === 0) {
+                input.value = "";
+                hidden.value = "";
+                suggest.style.display = "none";
+                clearBtn.style.display = "none";
+                return;
+            }
+            // 入力が1文字以上: realnameで部分一致
+            const filtered = properUsers.filter(
+                u => u.realname.indexOf(val) !== -1
+            );
+            showSuggestList(filtered);
+            hidden.value = "";
+            clearBtn.style.display = "inline";
+        });
+
+        // クリアボタン表示制御
+        input.addEventListener('focus', function() {
+            if (input.value.length > 0) {
+                clearBtn.style.display = "inline";
+            }
+        });
+        input.addEventListener('blur', function() {
+            setTimeout(function() {
+                suggest.style.display = "none";
+            }, 150); // サジェスト選択時のため
+        });
+
+        clearBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            input.value = "";
+            hidden.value = "";
+            clearBtn.style.display = "none";
+            suggest.style.display = "none";
+        });
+
+        // outsideクリックで閉じる
+        document.addEventListener('mousedown', function(e) {
+            if (!input.contains(e.target) && !suggest.contains(e.target) && e.target !== clearBtn) {
+                suggest.style.display = "none";
+            }
+        });
+
+        // --- 元々のスクリプト（持ち出し/譲渡/日付等） ---
         document.getElementById('start_date').value = getToday();
         document.getElementById('end_date').value = getThreeMonthLast();
         document.getElementById('transfer_date').value = getToday();
-        {% if g.user %}
-            document.getElementById('manager').value = "{{ g.user['username'] }}";
-        {% endif %}
 
         // 要素取得
         const cb_checkout = document.getElementById('with_checkout_cb');
@@ -220,12 +360,35 @@
         toggleTransferDetail();
     });
 
+    // 日付セット
+    function getToday() {
+        const d = new Date();
+        return d.toISOString().slice(0, 10);
+    }
+    function getThreeMonthLast() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const after3 = new Date(y, m + 3, 1);
+        const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
+        // 日本のローカル表記にする
+        return lastDay.toLocaleDateString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit'})
+                    .replace(/\//g, '-');
+    }
+
     // 申請時チェック
     function checkAndSubmit() {
         var allChecked = true;
         var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
         if (checks.length > 0) {
             alert("全ての数量チェックにチェックしてください");
+            return false;
+        }
+        // 管理者未選択チェック
+        var manager = document.getElementById('manager').value;
+        if (!manager) {
+            alert("管理者の入力が不正です。正しい管理者を選択してください");
+            document.getElementById('manager_input').focus();
             return false;
         }
         // 持ち出し＋譲渡同時申請時のバリデーション

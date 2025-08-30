@@ -322,6 +322,17 @@ def get_managers_by_department(department=None, db=None):
     return [{'username': row['username'], 'realname': row['realname'], 'department': row['department']} for row in rows]
 
 
+def get_proper_users(db):
+    return [
+        dict(username=row['username'], realname=row['realname'], department=row['department'])
+        for row in db.execute(
+            """SELECT u.username, u.realname, u.department
+                 FROM users u
+                 JOIN user_roles ur ON u.id = ur.user_id
+                 JOIN roles r ON ur.role_id = r.id
+                WHERE r.name = 'proper' ORDER BY u.department, u.username""")
+    ]
+
 
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
@@ -782,6 +793,17 @@ def delete_selected():
 def entry_request():
     db = get_db()
 
+    # properユーザーリスト
+    proper_users = get_proper_users(db)  # [{'username':..., 'department':..., 'realname':...}, ...]
+    proper_usernames = [u['username'] for u in proper_users]
+    proper_users_json = [
+        {
+            'username': u['username'],
+            'department': u.get('department', ''),
+            'realname': u.get('realname', '')
+        } for u in proper_users
+    ]
+
     # POST: 選択ID受取→申請フォーム表示
     if request.method == 'POST' and not request.form.get('action'):
         item_ids = request.form.getlist('selected_ids')
@@ -803,13 +825,19 @@ def entry_request():
         )
         approver_default = sorted_managers[0]['username'] if sorted_managers else ''
 
+        # 管理者欄のデフォルト
+        manager_default = g.user['username']
+
         return render_template(
             'entry_request.html',
             items=items, fields=INDEX_FIELDS,
             approver_default=approver_default,
-            approver_list=sorted_managers
-        ) 
-    
+            approver_list=sorted_managers,
+            proper_users=proper_users_json,
+            manager_default=manager_default,
+            g=g,
+        )
+
     # 申請フォーム送信（action=submit: 必須項目チェック＆申請内容をitem_applicationに登録、item.statusのみ即更新）
     if (request.method == 'GET' and request.args.get('action') == 'submit') or \
        (request.method == 'POST' and request.form.get('action') == 'submit'):
@@ -834,8 +862,9 @@ def entry_request():
         transfer_date = form.get("transfer_date", "") if with_checkout and with_transfer else ""
 
         errors = []
-        if not manager:
-            errors.append("管理者を入力してください。")
+        # properユーザーかチェック
+        if not manager or manager not in proper_usernames:
+            errors.append("管理者の入力が不正です。正しい管理者を選択してください。")
         if not approver:
             errors.append("承認者を選択してください。")
         if len(qty_checked) != len(item_ids):
@@ -860,13 +889,17 @@ def entry_request():
                 [m for m in all_managers if m['department'] != department]
             )
             approver_default = sorted_managers[0]['username'] if sorted_managers else ''
-            for msg in errors:
-                flash(msg)
+            manager_default = g.user['username']
+            error_dialog_message = " ".join(errors)  # または "\n".join(errors)
             return render_template(
                 'entry_request.html',
                 items=items, fields=INDEX_FIELDS,
                 approver_default=approver_default,
-                approver_list=sorted_managers
+                approver_list=sorted_managers,
+                proper_users=proper_users_json,
+                manager_default=manager_default,
+                g=g,
+                error_dialog_message=error_dialog_message,
             )
 
         # ▼ ステータス分岐
@@ -960,6 +993,15 @@ def entry_request():
 def checkout_request():
     db = get_db()
 
+    # properユーザーリスト取得
+    proper_users = get_proper_users(db)
+    proper_usernames = [u['username'] for u in proper_users]
+    proper_users_json = [
+        {'username': u['username'], 'department': u.get('department', ''), 'realname': u.get('realname', '')}
+        for u in proper_users
+    ]
+    manager_default = g.user['username']
+
     # 申請画面表示
     if request.method == 'POST' and not request.form.get('action'):
         item_ids = request.form.getlist('selected_ids')
@@ -1012,7 +1054,10 @@ def checkout_request():
             'checkout_form.html',
             items=items, fields=INDEX_FIELDS,
             approver_default=approver_default,
-            approver_list=sorted_managers
+            approver_list=sorted_managers,
+            proper_users=proper_users_json,
+            manager_default=manager_default,
+            g=g,
         )
 
     # 申請フォーム送信
@@ -1037,9 +1082,11 @@ def checkout_request():
         transfer_comment = form.get("transfer_comment", "") if with_transfer else ""
         transfer_date = form.get("transfer_date", "") if with_transfer else ""
 
+        # 管理者サジェスト正当性チェック
+        manager = form.get('manager', '').strip()
         errors = []
-        if not manager:
-            errors.append("管理者を入力してください。")
+        if not manager or manager not in proper_usernames:
+            errors.append("管理者は候補から選択してください。")
         if not approver:
             errors.append("承認者を選択してください。")
         if len(qty_checked) != len(item_ids):
@@ -1085,13 +1132,16 @@ def checkout_request():
                 [m for m in all_managers if m['department'] != department]
             )
             approver_default = sorted_managers[0]['username'] if sorted_managers else ''
-            for msg in errors:
-                flash(msg)
+            error_dialog_message = " ".join(errors)
             return render_template(
                 'checkout_form.html',
                 items=items, fields=INDEX_FIELDS,
                 approver_default=approver_default,
-                approver_list=sorted_managers
+                approver_list=sorted_managers,
+                proper_users=proper_users_json,
+                manager_default=manager_default,
+                g=g,
+                error_dialog_message=error_dialog_message,
             )
 
         # ▼ ステータス分岐
@@ -1641,12 +1691,27 @@ def bulk_manager_change():
     id_list = [int(i) for i in ids_str.split(',') if i.isdigit()]
     db = get_db()
     items = db.execute(f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
-    
+    proper_users = get_proper_users(db)
+    proper_usernames = [u['username'] for u in proper_users]
+    proper_users_json = [
+        {
+            'username': u['username'],
+            'department': u.get('department', ''),
+            'realname': u.get('realname', '')
+        } for u in proper_users
+    ]
+
     if request.method == 'POST':
         new_manager = request.form.get('new_manager', '').strip()
-        if not new_manager:
-            flash("新しい管理者名を入力してください")
-            return render_template('bulk_manager_change.html', items=items, ids=ids_str)
+        if not new_manager or new_manager not in proper_usernames:
+            # ダイアログでエラー表示
+            items = db.execute(f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
+            return render_template(
+                'bulk_manager_change.html',
+                items=items, ids=ids_str,
+                proper_users=proper_users_json,
+                error_message="管理者は候補から選択してください。"
+            )
         # 一括更新
         db.executemany("UPDATE item SET sample_manager=? WHERE id=?", [(new_manager, item['id']) for item in items])
         db.commit()
@@ -1666,7 +1731,16 @@ def bulk_manager_change():
             return redirect(url_for('menu'))
         else:
             return redirect(url_for('index'))
-    return render_template('bulk_manager_change.html', items=items, ids=ids_str)
+        
+    manager_default = g.user['username']
+    return render_template(
+        'bulk_manager_change.html',
+        items=items, ids=ids_str,
+        proper_users=proper_users_json,
+        manager_default=manager_default,
+        error_message=None
+    )
+
 
 @app.route('/my_applications')
 @login_required

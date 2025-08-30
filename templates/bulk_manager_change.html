@@ -1,4 +1,3 @@
-{# templates/admin_bulk_change.html #}
 {% extends "_base.html" %}
 
 {% block title %}管理者一括変更{% endblock %}
@@ -12,7 +11,6 @@
     .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
     .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
 
-    /* 統一ボタンスタイル */
     .main-btn, .cancel-btn {
         border: none;
         border-radius: 4px;
@@ -34,6 +32,55 @@
         color: #fff;
     }
     .cancel-btn:hover { background: #888; color: #fff; }
+
+    .form-field { margin-bottom: 12px; }
+    .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
+    .form-input, .form-textarea, .form-select {
+        width: 320px;
+        font-size: 1rem;
+        padding: 5px;
+        border-radius: 4px;
+        border: 1px solid #bbb;
+        box-sizing: border-box;
+    }
+    .input-clear-wrap {
+        position: relative;
+        display: inline-block;
+        width: 320px;
+        vertical-align: middle;
+    }
+    .clear-btn {
+        position: absolute;
+        right: 6px;
+        top: 55%;
+        transform: translateY(-40%);
+        cursor: pointer;
+        font-size: 1.03em;
+        color: #bbb;
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        line-height: 1;
+        display: none;
+        z-index: 10;
+        width: 1.3em;
+        height: 1.3em;
+        text-align: center;
+        transition: color 0.13s;
+        user-select: none;
+    }
+    .clear-btn:hover { color: #888; background: none; }
+    .suggest-list { 
+        position: absolute; background: #fff; border: 1px solid #bbb; border-radius: 6px;
+        box-shadow: 0 2px 8px #bbb8; z-index: 100; min-width: 320px; max-height: 180px; overflow-y: auto;
+        display: none;
+    }
+    .suggest-item {
+        padding: 6px 16px; cursor: pointer;
+    }
+    .suggest-item:hover, .suggest-item.active { background: #e3f2fd; }
+    .relative { position: relative; }
 </style>
 {% endblock %}
 
@@ -48,7 +95,7 @@
   </div>
 {% endif %}
 {% endwith %}
-<form method="post">
+<form method="post" onsubmit="return checkAndSubmit();">
     {% if request.args.get('from_menu') %}
         <input type="hidden" name="from_menu" value="1">
     {% endif %}
@@ -67,13 +114,122 @@
         </tr>
         {% endfor %}
     </table>
-    <div style="margin-top:18px;">
-        <label for="new_manager"><b>新しい管理者名:</b></label>
-        <input type="text" id="new_manager" name="new_manager" style="padding:4px 10px; font-size:1rem;">
+    <div class="form-field" style="margin-top:18px;">
+        <label class="form-label" for="new_manager_input"><b>新しい管理者:</b></label>
+        <div class="input-clear-wrap relative">
+            <input type="text" id="new_manager_input" autocomplete="off" class="form-input" placeholder="管理者を入力">
+            <span id="new_manager_clear" class="clear-btn" title="クリア">&#10005;</span>
+        </div>
+        <input type="hidden" id="new_manager" name="new_manager" value="">
+        <div id="new_manager_suggest" class="suggest-list"></div>
     </div>
     <div class="button-group">
         <button type="submit" class="main-btn">一括変更</button>
         <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">キャンセル</a>
     </div>
 </form>
+<script>
+const properUsers = {{ proper_users|tojson|safe }};
+const managerDefault = "{{ manager_default|e }}";
+const myUser = properUsers.find(u => u.username === managerDefault);
+
+function formatUser(user) {
+    return (user.department ? user.department : "") + " " + user.realname;
+}
+function showSuggestList(users) {
+    const suggest = document.getElementById('new_manager_suggest');
+    suggest.innerHTML = "";
+    users.forEach(user => {
+        const div = document.createElement('div');
+        div.className = "suggest-item";
+        div.textContent = formatUser(user);
+        div.dataset.username = user.username;
+        div.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            document.getElementById('new_manager_input').value = formatUser(user);
+            document.getElementById('new_manager').value = user.username;
+            suggest.style.display = "none";
+            document.getElementById('new_manager_clear').style.display = "inline";
+        });
+        suggest.appendChild(div);
+    });
+    if (users.length > 0) {
+        suggest.style.display = "block";
+    } else {
+        suggest.style.display = "none";
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const input = document.getElementById('new_manager_input');
+    const hidden = document.getElementById('new_manager');
+    const suggest = document.getElementById('new_manager_suggest');
+    const clearBtn = document.getElementById('new_manager_clear');
+
+    if (myUser) {
+        input.value = formatUser(myUser);
+        hidden.value = myUser.username;
+        clearBtn.style.display = "inline";
+    } else {
+        input.value = "";
+        hidden.value = "";
+        clearBtn.style.display = "none";
+    }
+
+    input.addEventListener('focus', function() {
+        showSuggestList(properUsers);
+    });
+    input.addEventListener('input', function(e) {
+        const val = input.value;
+        if (val.length === 0) {
+            input.value = "";
+            hidden.value = "";
+            suggest.style.display = "none";
+            clearBtn.style.display = "none";
+            return;
+        }
+        const filtered = properUsers.filter(
+            u => u.realname.indexOf(val) !== -1
+        );
+        showSuggestList(filtered);
+        hidden.value = "";
+        clearBtn.style.display = "inline";
+    });
+
+    input.addEventListener('focus', function() {
+        if (input.value.length > 0) {
+            clearBtn.style.display = "inline";
+        }
+    });
+    input.addEventListener('blur', function() {
+        setTimeout(function() {
+            suggest.style.display = "none";
+        }, 150);
+    });
+
+    clearBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        input.value = "";
+        hidden.value = "";
+        clearBtn.style.display = "none";
+        suggest.style.display = "none";
+    });
+
+    document.addEventListener('mousedown', function(e) {
+        if (!input.contains(e.target) && !suggest.contains(e.target) && e.target !== clearBtn) {
+            suggest.style.display = "none";
+        }
+    });
+});
+
+function checkAndSubmit() {
+    var hidden = document.getElementById('new_manager').value;
+    if (!hidden) {
+        alert("管理者は候補から選択してください。");
+        document.getElementById('new_manager_input').focus();
+        return false;
+    }
+    return true;
+}
+</script>
 {% endblock %}
