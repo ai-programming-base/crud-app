@@ -25,7 +25,7 @@
     .main-btn:hover { background: #23468e; color: #fff; }
     .form-field { margin-bottom: 12px; }
     .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
-    .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+    .form-input, .form-textarea, .form-select { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
     .form-textarea { height: 56px; resize: vertical; }
     .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
 </style>
@@ -106,14 +106,22 @@
                 </div>
             </div>
         </div>
-        <!-- 申請コメント、承認者は常時表示 -->
+        <!-- 申請コメント -->
         <div class="form-field">
             <label class="form-label" for="comment">申請コメント</label>
             <textarea class="form-textarea" id="comment" name="comment"></textarea>
         </div>
+        <!-- 承認者：ドロップダウン -->
         <div class="form-field">
             <label class="form-label" for="approver">承認者</label>
-            <input class="form-input" type="text" id="approver" name="approver" value="">
+            <select class="form-select" id="approver" name="approver" required>
+                {% for m in approver_list %}
+                    <option value="{{ m.username }}"
+                        {% if m.username == approver_default %}selected{% endif %}>
+                        {{ m.department }} {{ m.realname }}
+                    </option>
+                {% endfor %}
+            </select>
         </div>
     </div>
     <div class="button-group">
@@ -315,7 +323,6 @@
             let n = it.num_of_samples;
             if (!n || n <= 0) n = 1;
             for (let i = 1; i <= n; i++) {
-                // 譲渡する枝番は子item（branch_no）扱いとする
                 t += `<tr>
                 <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">
                     <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${i}">
@@ -328,60 +335,5 @@
         }
         area.innerHTML = allHtml;
     }
-
-    // 承認者欄：初期値セット＆全マネージャのプルダウン選択
-    function setupApproverSelector(approverInputId, approverList, defaultApprover) {
-        var approverInput = document.getElementById(approverInputId);
-        approverInput.value = defaultApprover || "";
-        approverInput.readOnly = false;
-        approverInput.style.cursor = "pointer";
-
-        var dropdown = document.createElement('div');
-        dropdown.style.position = 'absolute';
-        dropdown.style.background = '#fff';
-        dropdown.style.border = '1px solid #bbb';
-        dropdown.style.borderRadius = '6px';
-        dropdown.style.boxShadow = '0 2px 8px #bbb8';
-        dropdown.style.zIndex = '99';
-        dropdown.style.display = 'none';
-        dropdown.style.minWidth = '220px';
-
-        approverInput.parentNode.style.position = 'relative';
-        approverInput.parentNode.appendChild(dropdown);
-
-        function showDropdown() {
-            dropdown.innerHTML = '';
-            approverList.forEach(function(u) {
-                var item = document.createElement('div');
-                item.textContent = u;
-                item.style.padding = "6px 16px";
-                item.style.cursor = "pointer";
-                item.onmouseover = function() { item.style.background = "#e3f2fd"; };
-                item.onmouseout  = function() { item.style.background = "#fff"; };
-                item.onclick = function() {
-                    approverInput.value = u;
-                    dropdown.style.display = "none";
-                };
-                dropdown.appendChild(item);
-            });
-            dropdown.style.display = 'block';
-        }
-        approverInput.addEventListener('focus', showDropdown);
-        approverInput.addEventListener('click', showDropdown);
-
-        document.addEventListener('click', function(e) {
-            if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
-                dropdown.style.display = 'none';
-            }
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', function(){
-        // Pythonから受け取ったリスト・初期値をJS変数にセット
-        var approverList = {{ approver_list|tojson|safe }};
-        var defaultApprover = "{{ approver_default|e }}";
-        setupApproverSelector("approver", approverList, defaultApprover);
-    });
-
 </script>
 {% endblock %}

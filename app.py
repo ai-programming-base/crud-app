@@ -273,9 +273,8 @@ def select_field_config():
 
 def get_managers_by_department(department=None, db=None):
     """
-    部門指定で manager 権限ユーザー一覧を返す。
-    department=None で全manager返す
-    戻り値: [{'username': ..., 'realname': ..., 'department': ...}, ...]
+    department指定時→その部門のmanager全員
+    department=None→全manager
     """
     if db is None:
         db = get_db()
@@ -290,9 +289,10 @@ def get_managers_by_department(department=None, db=None):
     if department:
         query += " AND u.department = ?"
         params.append(department)
-    query += " ORDER BY u.username"
+    query += " ORDER BY u.department, u.realname"
     rows = db.execute(query, params).fetchall()
-    return [row['username'] for row in rows]
+    return [{'username': row['username'], 'realname': row['realname'], 'department': row['department']} for row in rows]
+
 
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -752,7 +752,7 @@ def delete_selected():
 def entry_request():
     db = get_db()
 
-    # 申請画面の表示（POST:選択済みID受取→フォーム表示）
+    # POST: 選択ID受取→申請フォーム表示
     if request.method == 'POST' and not request.form.get('action'):
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
@@ -763,14 +763,22 @@ def entry_request():
         ).fetchall()
         items = [dict(row) for row in items]
         department = g.user['department']
+        # manager権限ユーザーリスト取得
         managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
+        # 並べ替え：同部門→他部門
+        sorted_managers = (
+            [m for m in all_managers if m['department'] == department] +
+            [m for m in all_managers if m['department'] != department]
+        )
+        approver_default = sorted_managers[0]['username'] if sorted_managers else ''
+
         return render_template(
             'entry_request.html',
             items=items, fields=INDEX_FIELDS,
-            approver_default=managers_same_dept[0] if managers_same_dept else '',
-            approver_list=all_managers
-        )
+            approver_default=approver_default,
+            approver_list=sorted_managers
+        ) 
     
     # 申請フォーム送信（action=submit: 必須項目チェック＆申請内容をitem_applicationに登録、item.statusのみ即更新）
     if (request.method == 'GET' and request.args.get('action') == 'submit') or \
@@ -799,7 +807,7 @@ def entry_request():
         if not manager:
             errors.append("管理者を入力してください。")
         if not approver:
-            errors.append("承認者を入力してください。")
+            errors.append("承認者を選択してください。")
         if len(qty_checked) != len(item_ids):
             errors.append("すべての数量チェックをしてください。")
         # ▼ 新規：譲渡申請ONなら枝番必須
@@ -814,16 +822,21 @@ def entry_request():
                 f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
             ).fetchall()
             items = [dict(row) for row in items]
-            for msg in errors:
-                flash(msg)
             department = g.user['department']
             managers_same_dept = get_managers_by_department(department, db)
             all_managers = get_managers_by_department(None, db)
+            sorted_managers = (
+                [m for m in all_managers if m['department'] == department] +
+                [m for m in all_managers if m['department'] != department]
+            )
+            approver_default = sorted_managers[0]['username'] if sorted_managers else ''
+            for msg in errors:
+                flash(msg)
             return render_template(
                 'entry_request.html',
                 items=items, fields=INDEX_FIELDS,
-                approver_default=managers_same_dept[0] if managers_same_dept else '',
-                approver_list=all_managers
+                approver_default=approver_default,
+                approver_list=sorted_managers
             )
 
         # ▼ ステータス分岐
@@ -917,7 +930,7 @@ def entry_request():
 def checkout_request():
     db = get_db()
 
-    # 申請画面表示（index→POST:選択済みID受取→フォーム表示）
+    # 申請画面表示
     if request.method == 'POST' and not request.form.get('action'):
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
@@ -929,7 +942,7 @@ def checkout_request():
         ).fetchall()
         items = [dict(row) for row in items]
 
-        # --- 利用可能枝番の付与（child_item.status が 破棄/譲渡 以外） ---
+        # --- 利用可能枝番の付与 ---
         from collections import defaultdict
         placeholders = ','.join(['?'] * len(item_ids))
         child_rows = db.execute(
@@ -949,24 +962,30 @@ def checkout_request():
             it['available_branches'] = sorted(branches)
             it['available_count'] = len(branches)
 
-        # すべての枝番が対象外の item はリストから除外
         items = [it for it in items if it['available_count'] > 0]
         if not items:
             flash("申請可能な枝番が存在しません（破棄・譲渡のみ）。")
             return redirect(url_for('index'))
-        # ---------------------------------------------------------------
 
+        # --- 承認者リスト整形 ---
         department = g.user['department']
         managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
+        # 並べ替え（同部門→それ以外）
+        sorted_managers = (
+            [m for m in all_managers if m['department'] == department] +
+            [m for m in all_managers if m['department'] != department]
+        )
+        approver_default = sorted_managers[0]['username'] if sorted_managers else ''
+
         return render_template(
             'checkout_form.html',
             items=items, fields=INDEX_FIELDS,
-            approver_default=managers_same_dept[0] if managers_same_dept else '',
-            approver_list=all_managers
+            approver_default=approver_default,
+            approver_list=sorted_managers
         )
 
-    # 申請フォーム送信（action=submit: 必須項目チェック＆申請内容登録、item.statusのみ即更新）
+    # 申請フォーム送信
     if (request.method == 'GET' and request.args.get('action') == 'submit') or \
        (request.method == 'POST' and request.form.get('action') == 'submit'):
         form = request.form if request.method == 'POST' else request.args
@@ -992,7 +1011,7 @@ def checkout_request():
         if not manager:
             errors.append("管理者を入力してください。")
         if not approver:
-            errors.append("承認者を入力してください。")
+            errors.append("承認者を選択してください。")
         if len(qty_checked) != len(item_ids):
             errors.append("すべての数量チェックをしてください。")
         if with_transfer:
@@ -1028,18 +1047,21 @@ def checkout_request():
                 it['available_count'] = len(branches)
 
             items = [it for it in items if it['available_count'] > 0]
-            # ----------------------------------------------------------
-
             department = g.user['department']
             managers_same_dept = get_managers_by_department(department, db)
             all_managers = get_managers_by_department(None, db)
+            sorted_managers = (
+                [m for m in all_managers if m['department'] == department] +
+                [m for m in all_managers if m['department'] != department]
+            )
+            approver_default = sorted_managers[0]['username'] if sorted_managers else ''
             for msg in errors:
                 flash(msg)
             return render_template(
                 'checkout_form.html',
                 items=items, fields=INDEX_FIELDS,
-                approver_default=managers_same_dept[0] if managers_same_dept else '',
-                approver_list=all_managers
+                approver_default=approver_default,
+                approver_list=sorted_managers
             )
 
         # ▼ ステータス分岐
@@ -1053,17 +1075,14 @@ def checkout_request():
         start_date = form.get('start_date', '')
         end_date = form.get('end_date', '')
 
-        # 持ち出し所有者欄
         owner_lists = {}
         for id in item_ids:
             owner_lists[str(id)] = form.getlist(f'owner_list_{id}')
 
         for id in item_ids:
-            # item_applicationに申請内容を登録
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
             original_status = item['status']
 
-            # itemのstatusのみ即時変更
             db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
 
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
@@ -1101,7 +1120,6 @@ def checkout_request():
 
         db.commit()
 
-        # メール通知
         to=""
         subject=""
         body=""
@@ -1130,7 +1148,6 @@ def return_request():
         if not item_ids:
             flash("申請対象を選択してください")
             return redirect(url_for('index'))
-        # ステータスチェック
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
@@ -1157,16 +1174,21 @@ def return_request():
             item_list.append(item)
 
         department = g.user['department']
-        managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
+        # 並び順: 同じ部門→それ以外
+        sorted_managers = (
+            [m for m in all_managers if m['department'] == department] +
+            [m for m in all_managers if m['department'] != department]
+        )
+        approver_default = sorted_managers[0]['username'] if sorted_managers else ''
         return render_template(
             'return_form.html',
             items=item_list, fields=INDEX_FIELDS,
-            approver_default=managers_same_dept[0] if managers_same_dept else '',
-            approver_list=all_managers
+            approver_default=approver_default,
+            approver_list=sorted_managers
         )
 
-    # 申請フォームからの送信時（GET, action=submit）: item_applicationへ申請内容登録
+    # 申請フォームからの送信時（GET, action=submit）
     if request.args.get('action') == 'submit':
         item_ids = request.args.getlist('item_id')
         checkeds = request.args.getlist('qty_checked')
@@ -1174,7 +1196,6 @@ def return_request():
             flash("全ての数量チェックを確認してください")
             return redirect(url_for('index'))
 
-        # 申請内容
         applicant = g.user['username']
         applicant_comment = request.args.get('comment', '')
         approver = request.args.get('approver', '')
@@ -1202,7 +1223,6 @@ def return_request():
             ))
         db.commit()
 
-        # メール通知
         to=""
         subject=""
         body=""
@@ -1749,14 +1769,13 @@ def dispose_transfer_request():
         if not handler:
             errors.append("対応者を入力してください。")
         if not approver:
-            errors.append("承認者を入力してください。")
+            errors.append("承認者を選択してください。")
         if not target_child_ids:
             errors.append("少なくとも1つの子アイテムを選択してください。")
         if len(qty_checked_ids) != len(item_ids):
             errors.append("すべての親アイテムで数量チェックをしてください。")
 
         if errors:
-            # item/child_items両方にサンプル数計算を追加
             items = db.execute(
                 f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
             ).fetchall()
@@ -1785,18 +1804,22 @@ def dispose_transfer_request():
             department = g.user['department']
             managers_same_dept = get_managers_by_department(department, db)
             all_managers = get_managers_by_department(None, db)
+            sorted_managers = (
+                [m for m in all_managers if m['department'] == department] +
+                [m for m in all_managers if m['department'] != department]
+            )
+            approver_default = sorted_managers[0]['username'] if sorted_managers else ''
             return render_template(
                 'dispose_transfer_form.html',
                 items=item_list, child_items=child_items, fields=INDEX_FIELDS,
-                approver_default=managers_same_dept[0] if managers_same_dept else '',
-                approver_list=all_managers
+                approver_default=approver_default,
+                approver_list=sorted_managers
             )
 
         applicant = g.user['username']
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         for item_id in item_ids:
-            # 親ID（item）の全情報を取得＋サンプル数も埋め込む
             item = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
             item_dict = dict(item)
             child_total = db.execute(
@@ -1817,7 +1840,6 @@ def dispose_transfer_request():
             new_values['handler'] = handler
             new_values['dispose_comment'] = dispose_comment
 
-            # このitem_idに紐づく申請対象子アイテム(branch_no付き)
             target_child_branches_this = []
             for cid in target_child_ids:
                 row = db.execute("SELECT item_id, branch_no FROM child_item WHERE id=?", (cid,)).fetchone()
@@ -1841,7 +1863,6 @@ def dispose_transfer_request():
             db.execute("UPDATE item SET status=? WHERE id=?", ("破棄・譲渡申請中", item_id))
         db.commit()
 
-        # メール通知
         to=""
         subject=""
         body=""
@@ -1865,7 +1886,6 @@ def dispose_transfer_request():
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
-        # サンプル数計算
         item_list = []
         for item in items:
             item = dict(item)
@@ -1883,7 +1903,6 @@ def dispose_transfer_request():
                 item['sample_count'] = cnt
             item_list.append(item)
 
-        # ▼ child_item取得
         child_items = db.execute(
             f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
             item_ids
@@ -1892,11 +1911,16 @@ def dispose_transfer_request():
         department = g.user['department']
         managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
+        sorted_managers = (
+            [m for m in all_managers if m['department'] == department] +
+            [m for m in all_managers if m['department'] != department]
+        )
+        approver_default = sorted_managers[0]['username'] if sorted_managers else ''
         return render_template(
             'dispose_transfer_form.html',
             items=item_list, child_items=child_items, fields=INDEX_FIELDS,
-            approver_default=managers_same_dept[0] if managers_same_dept else '',
-            approver_list=all_managers
+            approver_default=approver_default,
+            approver_list=sorted_managers
         )
 
     return redirect(url_for('index'))
@@ -2108,4 +2132,4 @@ if __name__ == '__main__':
     init_item_application_db()
     init_application_history_db()
     init_inventory_check_db()
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=8000)
