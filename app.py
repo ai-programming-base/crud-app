@@ -498,14 +498,16 @@ def release_locks(db, ids):
         )
     db.commit()
 
+
 def _cleanup_expired_locks(db):
-    rows = db.execute("SELECT id, locked_at FROM item WHERE locked_by IS NOT NULL").fetchall()
+    # locked_byがNULLでも空文字でも「ロックされていない」と見なす
+    rows = db.execute(
+        "SELECT id, locked_at FROM item WHERE locked_by IS NOT NULL AND locked_by != ''"
+    ).fetchall()
     expired_ids = [r["id"] for r in rows if _is_lock_expired(r["locked_at"])]
     if expired_ids:
         ph = ",".join(["?"]*len(expired_ids))
         db.execute(f"UPDATE item SET locked_by=NULL, locked_at=NULL WHERE id IN ({ph})", expired_ids)
-        # “編集中” 表記も外す（任意：status を空にする/元に戻せないなら空）
-        db.execute(f"UPDATE item SET status='' WHERE id IN ({ph})", expired_ids)
         db.commit()
 
 
