@@ -360,7 +360,7 @@ def register():
                 )
             db.commit()
             flash('ユーザー登録が完了しました')
-            return redirect(url_for('login'))
+            return redirect(url_for('users_list'))
 
     return render_template('register.html', roles=roles)
 
