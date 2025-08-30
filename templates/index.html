@@ -135,6 +135,22 @@
     #main-form table tr.locked-row:hover td {
       background: inherit;
     }
+    .button-link {
+      display: inline-block;
+      padding: 6px 12px;
+      background: #1976d2;     /* ボタンの色と合わせて */
+      color: black;            /* ←ここをblackに */
+      border: none;
+      border-radius: 4px;
+      text-decoration: none;
+      cursor: pointer;
+      font-size: 14px;
+      text-align: center;
+      transition: background 0.2s;
+    }
+    .button-link:hover {
+      background: #115293;
+    }
 </style>
 
 <script>
@@ -454,10 +470,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
     <div class="dropdown">
-      <button class="dropbtn">作成 / ラベル</button>
+      <button class="dropbtn">起票 / ラベル</button>
       <div class="dropdown-menu">
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-        <a href="{{ url_for('raise_request', per_page=per_page, **filters) }}">起票（新規登録）</a>
+        <a href="{{ url_for('raise_request', per_page=per_page, **filters) }}" class="button-link">起票（新規登録）</a>
         <button type="button" onclick="copyToAdd()">起票（コピー：1件選択）</button>
         <button type="button" onclick="showPrintLabels()">選択ラベル印刷</button>
         {% endif %}
@@ -467,34 +483,36 @@ document.addEventListener('DOMContentLoaded', function () {
 
     {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
     <div class="dropdown">
-      <button class="dropbtn">申請メニュー</button>
+      <button class="dropbtn">申請</button>
       <div class="dropdown-menu">
         <div class="group-title">申請</div>
         <button type="button" onclick="submitApplyRequest()">入庫申請</button>
         <button type="button" onclick="submitCheckoutRequest()">持ち出し申請</button>
         <button type="button" onclick="submitReturnRequest()">持ち出し終了申請</button>
         <button type="button" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
-        <a href="{{ url_for('my_applications') }}">申請済みアイテム</a>
+        <a href="{{ url_for('my_applications') }}" class="button-link">申請済みアイテム</a>
       </div>
     </div>
     {% endif %}
 
     {% if 'admin' in g.user_roles or 'manager' %}
     <div class="dropdown">
-      <button class="dropbtn">承認メニュー</button>
+      <button class="dropbtn">承認</button>
       <div class="dropdown-menu">
         <div class="group-title">承認</div>
-        <a href="{{ url_for('approval') }}">承認アイテム</a>
+        <a href="{{ url_for('approval') }}" class="button-link">承認アイテム</a>
       </div>
     </div>
     {% endif %}
 
     <div class="dropdown">
-      <button class="dropbtn">一括操作</button>
+      <button class="dropbtn">編集・表示</button>
       <div class="dropdown-menu">
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
         <button type="button" onclick="changeOwners()">所有者を変更</button>
         <button type="button" onclick="bulkManagerChange()">管理者を一括変更</button>
+        <button type="button" onclick="bulkEdit()">製品情報を一括編集</button>
+        <button type="button" onclick="unlockMyLocks()">編集ロックを解除</button>
         <button type="button" onclick="showChildItems()">アイテム詳細表示</button>
         {% endif %}
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
@@ -506,16 +524,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
   <div class="topbar-right">
     <div class="dropdown">
-      <button class="dropbtn">編集</button>
-      <div class="dropdown-menu">
-        <button type="button" onclick="bulkEdit()">一括編集</button>
-        <button type="button" onclick="unlockMyLocks()">編集を解除</button>
-      </div>
-    </div>
-    <div class="dropdown">
       <button class="dropbtn">棚卸</button>
       <div class="dropdown-menu">
-        <a href="{{ url_for('inventory_list') }}">棚卸一覧</a>
+        <a href="{{ url_for('inventory_list') }}" class="button-link">棚卸一覧</a>
       </div>
     </div>
   </div>
