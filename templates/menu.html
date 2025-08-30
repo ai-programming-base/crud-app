@@ -1,33 +1,31 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>メニュー</title>
-    <style>
-        body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f6f8fa; }
-        .container { max-width: 480px; margin: 90px auto 0; background: #fff; border-radius: 16px; box-shadow: 0 4px 24px #acbadc33; padding: 48px 28px 32px 28px; text-align: center; }
-        h1 { font-size: 1.6rem; color: #2d487b; margin-bottom: 30px; }
-        .btn {
-            display: block; width: 80%; margin: 22px auto; padding: 16px 0;
-            background: #4285f4; color: #fff; border: none; border-radius: 10px;
-            font-size: 1.25rem; font-weight: bold; text-decoration: none; transition: background .18s;
-            box-shadow: 0 2px 10px #bbb2;
-        }
-        .btn:hover { background: #23468e; }
-        .user { font-size: 1rem; color: #3361c4; margin-bottom: 12px; text-align: right; }
-        .logout { display: inline-block; background: #db4437; color: #fff; border-radius: 5px; padding: 6px 15px; margin-left: 10px; text-decoration: none; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="user">
-            {{ g.user['username'] }} さん
-            <a href="{{ url_for('logout') }}" class="logout">ログアウト</a>
-        </div>
-        <h1>機能メニュー</h1>
-        <a href="{{ url_for('index') }}" class="btn">一覧表</a>
-        {% if 'admin' in g.user_roles or 'manager' in g.user_roles  or 'proper' in g.user_roles %}
-            <a href="{{ url_for('inventory_list') }}" class="btn">棚卸し一覧</a>
-        {% endif %}
-    </div>
-</body>
-</html>
+{# templates/menu.html #}
+{% extends "_base.html" %}
+
+{% block title %}メニュー{% endblock %}
+
+{% block head %}
+<style>
+    body { font-family: 'Segoe UI', 'Meiryo', sans-serif; background: #f6f8fa; }
+    .container { max-width: 480px; margin: 90px auto 0; background: #fff; border-radius: 16px; box-shadow: 0 4px 24px #acbadc33; padding: 48px 28px 32px 28px; text-align: center; }
+    h1 { font-size: 1.6rem; color: #2d487b; margin-bottom: 30px; }
+    .btn {
+        display: block; width: 80%; margin: 22px auto; padding: 16px 0;
+        background: #4285f4; color: #fff; border: none; border-radius: 10px;
+        font-size: 1.25rem; font-weight: bold; text-decoration: none; transition: background .18s;
+        box-shadow: 0 2px 10px #bbb2;
+    }
+    .btn:hover { background: #23468e; }
+    .user { font-size: 1rem; color: #3361c4; margin-bottom: 12px; text-align: right; }
+    .logout { display: inline-block; background: #db4437; color: #fff; border-radius: 5px; padding: 6px 15px; margin-left: 10px; text-decoration: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>機能メニュー</h1>
+    <a href="{{ url_for('index') }}" class="btn">一覧表</a>
+    {% if 'admin' in g.user_roles or 'manager' in g.user_roles  or 'proper' in g.user_roles %}
+        <a href="{{ url_for('inventory_list') }}" class="btn">棚卸し一覧</a>
+    {% endif %}
+</div>
+{% endblock %}

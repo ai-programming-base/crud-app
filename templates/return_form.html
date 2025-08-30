@@ -1,172 +1,174 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>持ち出し終了申請</title>
-    <style>
-        /* 入庫申請フォームのスタイル流用 */
-        table { border-collapse: collapse; }
-        th, td { border: 1px solid #aaa; padding: 5px 10px; }
-        th { background: #eee; }
-        .form-field { margin-bottom: 12px; }
-        .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
-        .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
-        .form-textarea { height: 56px; resize: vertical; }
-        .button-group { margin-top: 18px; }
-        .main-btn {
-            background: #4285f4; color: #fff; border: none; border-radius: 4px;
-            font-size: 1rem; font-weight: bold; padding: 6px 16px; margin-right: 8px;
-            cursor: pointer; text-decoration: none; transition: background .15s;
+{# templates/return_application.html #}
+{% extends "_base.html" %}
+
+{% block title %}持ち出し終了申請{% endblock %}
+
+{% block head %}
+<style>
+    /* 入庫申請フォームのスタイル流用 */
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #aaa; padding: 5px 10px; }
+    th { background: #eee; }
+    .form-field { margin-bottom: 12px; }
+    .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
+    .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+    .form-textarea { height: 56px; resize: vertical; }
+    .button-group { margin-top: 18px; }
+    .main-btn {
+        background: #4285f4; color: #fff; border: none; border-radius: 4px;
+        font-size: 1rem; font-weight: bold; padding: 6px 16px; margin-right: 8px;
+        cursor: pointer; text-decoration: none; transition: background .15s;
+    }
+</style>
+<script>
+    function getToday() {
+        const d = new Date();
+        return d.toISOString().slice(0, 10);
+    }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.getElementById('return_date').value = getToday();
+    });
+    function checkAndSubmit() {
+        var allChecked = true;
+        var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
+        if (checks.length > 0) {
+            alert("全ての数量チェックにチェックしてください");
+            return false;
         }
-    </style>
-    <script>
-        function getToday() {
-            const d = new Date();
-            return d.toISOString().slice(0, 10);
-        }
-        document.addEventListener("DOMContentLoaded", function() {
-            document.getElementById('return_date').value = getToday();
-        });
-        function checkAndSubmit() {
-            var allChecked = true;
-            var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
-            if (checks.length > 0) {
-                alert("全ての数量チェックにチェックしてください");
-                return false;
-            }
-            return true;
-        }
+        return true;
+    }
 
-        // === 承認者欄のデフォルト＋プルダウン ===
-        function setupApproverSelector(approverInputId, approverList, defaultApprover) {
-            var approverInput = document.getElementById(approverInputId);
-            approverInput.value = defaultApprover || "";
-            approverInput.readOnly = false;
-            approverInput.style.cursor = "pointer";
+    // === 承認者欄のデフォルト＋プルダウン ===
+    function setupApproverSelector(approverInputId, approverList, defaultApprover) {
+        var approverInput = document.getElementById(approverInputId);
+        approverInput.value = defaultApprover || "";
+        approverInput.readOnly = false;
+        approverInput.style.cursor = "pointer";
 
-            var dropdown = document.createElement('div');
-            dropdown.style.position = 'absolute';
-            dropdown.style.background = '#fff';
-            dropdown.style.border = '1px solid #bbb';
-            dropdown.style.borderRadius = '6px';
-            dropdown.style.boxShadow = '0 2px 8px #bbb8';
-            dropdown.style.zIndex = '99';
-            dropdown.style.display = 'none';
-            dropdown.style.minWidth = '220px';
+        var dropdown = document.createElement('div');
+        dropdown.style.position = 'absolute';
+        dropdown.style.background = '#fff';
+        dropdown.style.border = '1px solid #bbb';
+        dropdown.style.borderRadius = '6px';
+        dropdown.style.boxShadow = '0 2px 8px #bbb8';
+        dropdown.style.zIndex = '99';
+        dropdown.style.display = 'none';
+        dropdown.style.minWidth = '220px';
 
-            approverInput.parentNode.style.position = 'relative';
-            approverInput.parentNode.appendChild(dropdown);
+        approverInput.parentNode.style.position = 'relative';
+        approverInput.parentNode.appendChild(dropdown);
 
-            function showDropdown() {
-                dropdown.innerHTML = '';
-                approverList.forEach(function(u) {
-                    var item = document.createElement('div');
-                    item.textContent = u;
-                    item.style.padding = "6px 16px";
-                    item.style.cursor = "pointer";
-                    item.onmouseover = function() { item.style.background = "#e3f2fd"; };
-                    item.onmouseout  = function() { item.style.background = "#fff"; };
-                    item.onclick = function() {
-                        approverInput.value = u;
-                        dropdown.style.display = "none";
-                    };
-                    dropdown.appendChild(item);
-                });
-                dropdown.style.display = 'block';
-            }
-            approverInput.addEventListener('focus', showDropdown);
-            approverInput.addEventListener('click', showDropdown);
-
-            document.addEventListener('click', function(e) {
-                if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.style.display = 'none';
-                }
+        function showDropdown() {
+            dropdown.innerHTML = '';
+            approverList.forEach(function(u) {
+                var item = document.createElement('div');
+                item.textContent = u;
+                item.style.padding = "6px 16px";
+                item.style.cursor = "pointer";
+                item.onmouseover = function() { item.style.background = "#e3f2fd"; };
+                item.onmouseout  = function() { item.style.background = "#fff"; };
+                item.onclick = function() {
+                    approverInput.value = u;
+                    dropdown.style.display = "none";
+                };
+                dropdown.appendChild(item);
             });
+            dropdown.style.display = 'block';
         }
+        approverInput.addEventListener('focus', showDropdown);
+        approverInput.addEventListener('click', showDropdown);
 
-        document.addEventListener('DOMContentLoaded', function(){
-            var approverList = {{ approver_list|tojson|safe }};
-            var defaultApprover = "{{ approver_default|e }}";
-            setupApproverSelector("approver", approverList, defaultApprover);
+        document.addEventListener('click', function(e) {
+            if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
         });
-    </script>
-</head>
-<body>
-    <h1>持ち出し終了申請</h1>
-    {% if message %}
-      <div class="info-message">{{ message }}</div>
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+        var approverList = {{ approver_list|tojson|safe }};
+        var defaultApprover = "{{ approver_default|e }}";
+        setupApproverSelector("approver", approverList, defaultApprover);
+    });
+</script>
+{% endblock %}
+
+{% block content %}
+<h1>持ち出し終了申請</h1>
+{% if message %}
+  <div class="info-message">{{ message }}</div>
+{% endif %}
+{% if not finish %}
+<form method="get" onsubmit="return checkAndSubmit();">
+    {% if request.args.get('from_menu') %}
+        <input type="hidden" name="from_menu" value="1">
     {% endif %}
-    {% if not finish %}
-    <form method="get" onsubmit="return checkAndSubmit();">
-        {% if request.args.get('from_menu') %}
-            <input type="hidden" name="from_menu" value="1">
-        {% endif %}
-        <input type="hidden" name="action" value="submit">
-        <table>
-            <tr>
-                <th>ID</th>
-                {% for f in fields %}
-                <th>{{ f.name }}</th>
-                {% endfor %}
-                <th>サンプル数</th>
-                <th>数量チェック</th>
-            </tr>
-            {% for item in items %}
-            <tr>
-                <td>
-                    {{ item['id'] }}
-                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
-                </td>
-                {% for f in fields %}
-                <td>{{ item[f.key] }}</td>
-                {% endfor %}
-                <td>{{ item.sample_count }}</td>
-                <td><input type="checkbox" name="qty_checked"></td>
-            </tr>
-            {% endfor %}
-        </table>
-        <div class="form-field">
-            <label class="form-label" for="return_date">返却確認日</label>
-            <input class="form-input" type="date" id="return_date" name="return_date">
-        </div>
-        <div class="form-field">
-            <label class="form-label" for="storage">保管場所</label>
-            <input class="form-input" type="text" id="storage" name="storage">
-        </div>
-        <div class="form-field">
-            <label class="form-label" for="comment">申請コメント</label>
-            <textarea class="form-textarea" id="comment" name="comment"></textarea>
-        </div>
-        <div class="form-field">
-            <label class="form-label" for="approver">承認者</label>
-            <input class="form-input" type="text" id="approver" name="approver" value="">
-        </div>
-        <div class="button-group">
-            <button type="submit" class="main-btn">申請</button>
-            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
-        </div>
-    </form>
-    {% endif %}
-    {% if finish %}
-    <h2>申請内容</h2>
+    <input type="hidden" name="action" value="submit">
     <table>
         <tr>
             <th>ID</th>
             {% for f in fields %}
             <th>{{ f.name }}</th>
             {% endfor %}
+            <th>サンプル数</th>
+            <th>数量チェック</th>
         </tr>
         {% for item in items %}
         <tr>
-            <td>{{ item['id'] }}</td>
+            <td>
+                {{ item['id'] }}
+                <input type="hidden" name="item_id" value="{{ item['id'] }}">
+            </td>
             {% for f in fields %}
             <td>{{ item[f.key] }}</td>
             {% endfor %}
+            <td>{{ item.sample_count }}</td>
+            <td><input type="checkbox" name="qty_checked"></td>
         </tr>
         {% endfor %}
     </table>
-    <div class="button-group" style="margin-top: 20px;">
-        <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+    <div class="form-field">
+        <label class="form-label" for="return_date">返却確認日</label>
+        <input class="form-input" type="date" id="return_date" name="return_date">
     </div>
-    {% endif %}
-</body>
-</html>
+    <div class="form-field">
+        <label class="form-label" for="storage">保管場所</label>
+        <input class="form-input" type="text" id="storage" name="storage">
+    </div>
+    <div class="form-field">
+        <label class="form-label" for="comment">申請コメント</label>
+        <textarea class="form-textarea" id="comment" name="comment"></textarea>
+    </div>
+    <div class="form-field">
+        <label class="form-label" for="approver">承認者</label>
+        <input class="form-input" type="text" id="approver" name="approver" value="">
+    </div>
+    <div class="button-group">
+        <button type="submit" class="main-btn">申請</button>
+        <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
+    </div>
+</form>
+{% endif %}
+{% if finish %}
+<h2>申請内容</h2>
+<table>
+    <tr>
+        <th>ID</th>
+        {% for f in fields %}
+        <th>{{ f.name }}</th>
+        {% endfor %}
+    </tr>
+    {% for item in items %}
+    <tr>
+        <td>{{ item['id'] }}</td>
+        {% for f in fields %}
+        <td>{{ item[f.key] }}</td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+</table>
+<div class="button-group" style="margin-top: 20px;">
+    <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+</div>
+{% endif %}
+{% endblock %}

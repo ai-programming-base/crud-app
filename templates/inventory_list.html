@@ -1,88 +1,84 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>棚卸し一覧</title>
-    <style>
-        table { border-collapse: collapse; width: 98%; table-layout: fixed; }
-        th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
-        th { background: #eee; }
-        th.col-checkbox, td.col-checkbox {
-            width: 36px; min-width: 36px; max-width: 38px; text-align: center;
-        }
-        .main-btn {
-            background: #4285f4;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: bold;
-            padding: 6px 16px;
-            margin-right: 8px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background .15s;
-        }
-        .main-btn:hover { background: #23468e; color: #fff; }
-        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
-        .back-link { margin-top: 16px; display: inline-block; color: #23468e; text-decoration: none; font-size: 15px; }
-        .back-link:hover { text-decoration: underline; }
-        .user-bar { width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;}
-    </style>
-    <script>
-        function toggleSelectAll(chk) {
-            let checks = document.querySelectorAll('.rowcheck');
-            checks.forEach(e => e.checked = chk.checked);
-        }
-    </script>
-</head>
-<body>
-    <div class="user-bar" style="margin-top:18px; margin-bottom:2px;">
-        <span style="font-weight:bold; color:#3161c4; margin-right:12px;">
-            {{ g.user['username'] }} さん
-        </span>
-        <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
+{# templates/inventory_list.html #}
+{% extends "_base.html" %}
+
+{% block title %}棚卸し一覧{% endblock %}
+
+{% block head %}
+<style>
+    table { border-collapse: collapse; width: 98%; table-layout: fixed; }
+    th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
+    th { background: #eee; }
+    th.col-checkbox, td.col-checkbox {
+        width: 36px; min-width: 36px; max-width: 38px; text-align: center;
+    }
+    .main-btn {
+        background: #4285f4;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        font-weight: bold;
+        padding: 6px 16px;
+        margin-right: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background .15s;
+    }
+    .main-btn:hover { background: #23468e; color: #fff; }
+    .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+    .back-link { margin-top: 16px; display: inline-block; color: #23468e; text-decoration: none; font-size: 15px; }
+    .back-link:hover { text-decoration: underline; }
+    .user-bar { width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;}
+</style>
+<script>
+    function toggleSelectAll(chk) {
+        let checks = document.querySelectorAll('.rowcheck');
+        checks.forEach(e => e.checked = chk.checked);
+    }
+</script>
+{% endblock %}
+
+{% block content %}
+<h1>棚卸し一覧</h1>
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    <div class="error-message">
+      {% for msg in messages %}
+        {{ msg }}<br>
+      {% endfor %}
     </div>
-    <h1>棚卸し一覧</h1>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="error-message">
-          {% for msg in messages %}
-            {{ msg }}<br>
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
-    <form method="post" action="{{ url_for('inventory_check') }}">
-        <table>
-            <tr>
-                <th class="col-checkbox"><input type="checkbox" onclick="toggleSelectAll(this)"></th>
-                <th class="col-id">ID</th>
-                {% for field in fields %}
-                  <th>{{ field.name }}</th>
-                {% endfor %}
-                <th>最終棚卸し日</th>
-                <th>最終実施者</th>
-                <th>履歴</th>
-            </tr>
-            {% for item in items %}
-            <tr>
-                <td class="col-checkbox"><input type="checkbox" class="rowcheck" name="selected_ids" value="{{ item['id'] }}"></td>
-                <td class="col-id">{{ item['id'] }}</td>
-                {% for field in fields %}
-                  <td>{{ item[field.key] }}</td>
-                {% endfor %}
-                <td>{{ item['last_checked_at'] or '-' }}</td>
-                <td>{{ item['last_checker'] or '-' }}</td>
-                <td>
-                  <a href="{{ url_for('inventory_history', item_id=item['id']) }}" style="color:#3161c4;text-decoration:underline;">履歴</a>
-                </td>
-            </tr>
+  {% endif %}
+{% endwith %}
+<form method="post" action="{{ url_for('inventory_check') }}">
+    <table>
+        <tr>
+            <th class="col-checkbox"><input type="checkbox" onclick="toggleSelectAll(this)"></th>
+            <th class="col-id">ID</th>
+            {% for field in fields %}
+              <th>{{ field.name }}</th>
             {% endfor %}
-        </table>
-        <div style="margin:14px 0;">
-            <button type="submit" class="main-btn" onclick="return confirm('選択したアイテムの棚卸しを登録しますか？')">棚卸し完了</button>
-            <a href="{{ url_for('index') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">一覧へ</a>
-        </div>
-    </form>
-</body>
-</html>
+            <th>最終棚卸し日</th>
+            <th>最終実施者</th>
+            <th>履歴</th>
+        </tr>
+        {% for item in items %}
+        <tr>
+            <td class="col-checkbox"><input type="checkbox" class="rowcheck" name="selected_ids" value="{{ item['id'] }}"></td>
+            <td class="col-id">{{ item['id'] }}</td>
+            {% for field in fields %}
+              <td>{{ item[field.key] }}</td>
+            {% endfor %}
+            <td>{{ item['last_checked_at'] or '-' }}</td>
+            <td>{{ item['last_checker'] or '-' }}</td>
+            <td>
+              <a href="{{ url_for('inventory_history', item_id=item['id']) }}" style="color:#3161c4;text-decoration:underline;">履歴</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    <div style="margin:14px 0;">
+        <button type="submit" class="main-btn" onclick="return confirm('選択したアイテムの棚卸しを登録しますか？')">棚卸し完了</button>
+        <a href="{{ url_for('index') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">一覧へ</a>
+    </div>
+</form>
+{% endblock %}

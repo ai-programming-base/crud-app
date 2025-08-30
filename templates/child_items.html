@@ -1,99 +1,101 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>アイテム詳細</title>
-    <style>
-        table { border-collapse: collapse; width: 98%; }
-        th, td { border: 1px solid #aaa; padding: 6px 12px; }
-        th { background: #eee; }
-        .main-btn, .cancel-btn {
-            border: none; border-radius: 4px; font-size: 1rem; font-weight: bold;
-            padding: 6px 16px; margin-right: 8px; cursor: pointer; text-decoration: none; transition: background .15s;
-        }
-        .main-btn { background: #4285f4; color: #fff; }
-        .main-btn:hover { background: #23468e; color: #fff; }
-        .cancel-btn { background: #aaa; color: #fff; }
-        .cancel-btn:hover { background: #888; color: #fff; }
-        h2 { margin-top: 22px; }
-        .subtle { color:#555; font-size:.95rem; }
-        .nowrap { white-space: nowrap; }
-        .small { font-size: .9rem; }
-    </style>
-</head>
-<body>
-    <h1>アイテム詳細</h1>
+{# templates/item_detail.html #}
+{% extends "_base.html" %}
 
-    <!-- アイテム概要（入庫申請と同じ、数量チェック列なし） -->
-    <h2>アイテム概要</h2>
-    <table>
-        <tr>
-            <th>ID</th>
-            {% for f in fields %}
-                <th>{{ f.name }}</th>
-            {% endfor %}
-            <th>サンプル数</th>
-        </tr>
-        {% for it in items %}
-        <tr>
-            <td class="nowrap">{{ it['id'] }}</td>
-            {% for f in fields %}
-                <td>{{ it[f.key] }}</td>
-            {% endfor %}
-            <td class="nowrap">{{ it['num_of_samples'] }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+{% block title %}アイテム詳細{% endblock %}
 
-    <!-- 子アイテム一覧 -->
-    <h2>子アイテム</h2>
-    <table>
-        <tr>
-            <th>親通し番号 (item_id)</th>
-            <th>親アイテム名</th>
-            <th>枝番</th>
-            <th>所有者</th>
-            <th>破棄・譲渡日</th>
-            <th>状態</th>
-            <th>コメント</th>
-        </tr>
-        {% for ci in child_items %}
-        <tr>
-            <td>{{ ci['item_id'] }}</td>
-            <td>{{ item_map[ci['item_id']]['product_name'] if ci['item_id'] in item_map else '' }}</td>
-            <td>{{ ci['branch_no'] }}</td>
-            <td>{{ ci['owner'] }}</td>
-            <td class="nowrap">{{ ci['transfer_dispose_date'] }}</td>
-            <td>{{ ci['status'] }}</td>
-            <td>{{ ci['comment'] }}</td>
-        </tr>
-        {% endfor %}
-    </table>
+{% block head %}
+<style>
+    table { border-collapse: collapse; width: 98%; }
+    th, td { border: 1px solid #aaa; padding: 6px 12px; }
+    th { background: #eee; }
+    .main-btn, .cancel-btn {
+        border: none; border-radius: 4px; font-size: 1rem; font-weight: bold;
+        padding: 6px 16px; margin-right: 8px; cursor: pointer; text-decoration: none; transition: background .15s;
+    }
+    .main-btn { background: #4285f4; color: #fff; }
+    .main-btn:hover { background: #23468e; color: #fff; }
+    .cancel-btn { background: #aaa; color: #fff; }
+    .cancel-btn:hover { background: #888; color: #fff; }
+    h2 { margin-top: 22px; }
+    .subtle { color:#555; font-size:.95rem; }
+    .nowrap { white-space: nowrap; }
+    .small { font-size: .9rem; }
+</style>
+{% endblock %}
 
-    <!-- 持ち出し申請履歴 -->
-    <h2>持ち出し申請履歴</h2>
-    {% if checkout_histories %}
-    <table>
+{% block content %}
+<h1>アイテム詳細</h1>
+
+<!-- アイテム概要 -->
+<h2>アイテム概要</h2>
+<table>
     <tr>
-        <th>親通し番号</th>
-        <th>親アイテム名</th>
-        <th>持ち出し開始</th>
-        <th>持ち出し終了</th>
+        <th>ID</th>
+        {% for f in fields %}
+            <th>{{ f.name }}</th>
+        {% endfor %}
+        <th>サンプル数</th>
     </tr>
-    {% for h in checkout_histories %}
+    {% for it in items %}
     <tr>
-        <td>{{ h.item_id }}</td>
-        <td>{{ h.product_name }}</td>
-        <td class="nowrap">{{ h.checkout_start_date }}</td>
-        <td class="nowrap">{{ h.checkout_end_date }}</td>
+        <td class="nowrap">{{ it['id'] }}</td>
+        {% for f in fields %}
+            <td>{{ it[f.key] }}</td>
+        {% endfor %}
+        <td class="nowrap">{{ it['num_of_samples'] }}</td>
     </tr>
     {% endfor %}
-    </table>
-    {% else %}
-    <div class="subtle">持ち出し申請履歴はありません。</div>
-    {% endif %}
+</table>
 
-    <div style="margin-top:20px;">
-      <a href="{% if request.args.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">一覧に戻る</a>
-    </div>
-</body>
-</html>
+<!-- 子アイテム一覧 -->
+<h2>子アイテム</h2>
+<table>
+    <tr>
+        <th>親通し番号 (item_id)</th>
+        <th>親アイテム名</th>
+        <th>枝番</th>
+        <th>所有者</th>
+        <th>破棄・譲渡日</th>
+        <th>状態</th>
+        <th>コメント</th>
+    </tr>
+    {% for ci in child_items %}
+    <tr>
+        <td>{{ ci['item_id'] }}</td>
+        <td>{{ item_map[ci['item_id']]['product_name'] if ci['item_id'] in item_map else '' }}</td>
+        <td>{{ ci['branch_no'] }}</td>
+        <td>{{ ci['owner'] }}</td>
+        <td class="nowrap">{{ ci['transfer_dispose_date'] }}</td>
+        <td>{{ ci['status'] }}</td>
+        <td>{{ ci['comment'] }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<!-- 持ち出し申請履歴 -->
+<h2>持ち出し申請履歴</h2>
+{% if checkout_histories %}
+<table>
+<tr>
+    <th>親通し番号</th>
+    <th>親アイテム名</th>
+    <th>持ち出し開始</th>
+    <th>持ち出し終了</th>
+</tr>
+{% for h in checkout_histories %}
+<tr>
+    <td>{{ h.item_id }}</td>
+    <td>{{ h.product_name }}</td>
+    <td class="nowrap">{{ h.checkout_start_date }}</td>
+    <td class="nowrap">{{ h.checkout_end_date }}</td>
+</tr>
+{% endfor %}
+</table>
+{% else %}
+<div class="subtle">持ち出し申請履歴はありません。</div>
+{% endif %}
+
+<div style="margin-top:20px;">
+  <a href="{% if request.args.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">一覧に戻る</a>
+</div>
+{% endblock %}

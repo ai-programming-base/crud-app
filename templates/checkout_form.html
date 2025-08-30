@@ -1,334 +1,326 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>持ち出し申請</title>
-    <style>
-        table { border-collapse: collapse; }
-        th, td { border: 1px solid #aaa; padding: 5px 10px; }
-        th { background: #eee; }
-        .button-group { margin-top: 18px; }
-        .main-btn {
-            background: #4285f4;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: bold;
-            padding: 6px 16px;
-            margin-right: 8px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background .15s;
-        }
-        .main-btn:hover { background: #23468e; color: #fff; }
-        .form-field { margin-bottom: 12px; }
-        .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
-        .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
-        .form-textarea { height: 56px; resize: vertical; }
-        .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
-    </style>
-</head>
-<body>
-    <div style="width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;">
-        <div style="margin-top:18px; margin-bottom:2px;">
-            <span style="font-weight:bold; color:#3161c4; margin-right:12px;">
-                {{ g.user['username'] }} さん
-            </span>
-            <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
-        </div>
-    </div>
-    <h1>持ち出し申請</h1>
-    {% if message %}
-      <div class="info-message">{{ message }}</div>
-    {% endif %}
-    {% if not finish %}
-    <form method="get" onsubmit="return checkAndSubmit();">
-        {% if request.args.get('from_menu') %}
-            <input type="hidden" name="from_menu" value="1">
-        {% endif %}
-        <input type="hidden" name="action" value="submit">
-        <table>
-            <tr>
-                <th>ID</th>
-                {% for f in fields %}
-                <th>{{ f.name }}</th>
-                {% endfor %}
-                <th>サンプル数</th>
-                <th>数量チェック</th>
-            </tr>
-            {% for item in items %}
-            <tr>
-                <td>
-                    {{ item['id'] }}
-                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
-                </td>
-                {% for f in fields %}
-                <td>{{ item[f.key] }}</td>
-                {% endfor %}
-                <td>{{ item['available_count'] }}</td>
-                <td><input type="checkbox" name="qty_checked"></td>
-            </tr>
-            {% endfor %}
-        </table>
-        <div style="margin-top: 24px; margin-bottom: 8px;">
-            <div class="form-field">
-                <label class="form-label" for="manager">管理者</label>
-                <input class="form-input" type="text" id="manager" name="manager" value="">
-            </div>
+{# templates/checkout_request.html #}
+{% extends "_base.html" %}
 
-            <div id="checkout-area">
-                <div class="form-field">
-                    <label class="form-label" for="start_date">持ち出し開始日</label>
-                    <input class="form-input" type="date" id="start_date" name="start_date">
-                </div>
-                <div class="form-field">
-                    <label class="form-label" for="end_date">持ち出し終了日</label>
-                    <input class="form-input" type="date" id="end_date" name="end_date">
-                </div>
-                <div id="owner-tables-area" style="margin-top:25px;"></div>
-            </div>
+{% block title %}持ち出し申請{% endblock %}
 
-            <div id="with_transfer_area" style="margin-top:8px;">
-                <label class="form-label">
-                    <input type="checkbox" name="with_transfer" value="1" id="with_transfer_cb">
-                    譲渡申請も同時に行う
-                </label>
-                <div id="transfer-detail-area" style="display:none; margin-top:8px;">
-                    <div class="form-field">
-                        <label class="form-label" for="transfer_date">譲渡日</label>
-                        <input class="form-input" type="date" id="transfer_date" name="transfer_date">
-                    </div>
-                    <div id="transfer-branch-tables"></div>
-                    <div class="form-field">
-                        <label class="form-label" for="transfer_comment">譲渡コメント</label>
-                        <textarea class="form-textarea" id="transfer_comment" name="transfer_comment"></textarea>
-                    </div>
-                </div>
-            </div>
-            <div class="form-field">
-                <label class="form-label" for="comment">申請コメント</label>
-                <textarea class="form-textarea" id="comment" name="comment"></textarea>
-            </div>
-            <div class="form-field">
-                <label class="form-label" for="approver">承認者</label>
-                <input class="form-input" type="text" id="approver" name="approver" value="">
-            </div>
-        </div>
-        <div class="button-group">
-            <button type="submit" class="main-btn">申請</button>
-            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
-        </div>
-    </form>
+{% block head %}
+<style>
+    table { border-collapse: collapse; }
+    th, td { border: 1px solid #aaa; padding: 5px 10px; }
+    th { background: #eee; }
+    .button-group { margin-top: 18px; }
+    .main-btn {
+        background: #4285f4;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        font-weight: bold;
+        padding: 6px 16px;
+        margin-right: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background .15s;
+    }
+    .main-btn:hover { background: #23468e; color: #fff; }
+    .form-field { margin-bottom: 12px; }
+    .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
+    .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+    .form-textarea { height: 56px; resize: vertical; }
+    .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>持ち出し申請</h1>
+{% if message %}
+  <div class="info-message">{{ message }}</div>
+{% endif %}
+{% if not finish %}
+<form method="get" onsubmit="return checkAndSubmit();">
+    {% if request.args.get('from_menu') %}
+        <input type="hidden" name="from_menu" value="1">
     {% endif %}
-    {% if finish %}
-    <h2>申請内容</h2>
+    <input type="hidden" name="action" value="submit">
     <table>
         <tr>
             <th>ID</th>
             {% for f in fields %}
             <th>{{ f.name }}</th>
             {% endfor %}
+            <th>サンプル数</th>
+            <th>数量チェック</th>
         </tr>
         {% for item in items %}
         <tr>
-            <td>{{ item['id'] }}</td>
+            <td>
+                {{ item['id'] }}
+                <input type="hidden" name="item_id" value="{{ item['id'] }}">
+            </td>
             {% for f in fields %}
             <td>{{ item[f.key] }}</td>
             {% endfor %}
+            <td>{{ item['available_count'] }}</td>
+            <td><input type="checkbox" name="qty_checked"></td>
         </tr>
         {% endfor %}
     </table>
-    <div class="button-group" style="margin-top: 20px;">
-        <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+    <div style="margin-top: 24px; margin-bottom: 8px;">
+        <div class="form-field">
+            <label class="form-label" for="manager">管理者</label>
+            <input class="form-input" type="text" id="manager" name="manager" value="">
+        </div>
+        <div id="checkout-area">
+            <div class="form-field">
+                <label class="form-label" for="start_date">持ち出し開始日</label>
+                <input class="form-input" type="date" id="start_date" name="start_date">
+            </div>
+            <div class="form-field">
+                <label class="form-label" for="end_date">持ち出し終了日</label>
+                <input class="form-input" type="date" id="end_date" name="end_date">
+            </div>
+            <div id="owner-tables-area" style="margin-top:25px;"></div>
+        </div>
+        <div id="with_transfer_area" style="margin-top:8px;">
+            <label class="form-label">
+                <input type="checkbox" name="with_transfer" value="1" id="with_transfer_cb">
+                譲渡申請も同時に行う
+            </label>
+            <div id="transfer-detail-area" style="display:none; margin-top:8px;">
+                <div class="form-field">
+                    <label class="form-label" for="transfer_date">譲渡日</label>
+                    <input class="form-input" type="date" id="transfer_date" name="transfer_date">
+                </div>
+                <div id="transfer-branch-tables"></div>
+                <div class="form-field">
+                    <label class="form-label" for="transfer_comment">譲渡コメント</label>
+                    <textarea class="form-textarea" id="transfer_comment" name="transfer_comment"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="form-field">
+            <label class="form-label" for="comment">申請コメント</label>
+            <textarea class="form-textarea" id="comment" name="comment"></textarea>
+        </div>
+        <div class="form-field">
+            <label class="form-label" for="approver">承認者</label>
+            <input class="form-input" type="text" id="approver" name="approver" value="">
+        </div>
     </div>
-    {% endif %}
-    <script>
-        // 日付セット
-        function getToday() {
-            const d = new Date();
-            return d.toISOString().slice(0, 10);
-        }
-        function getThreeMonthLast() {
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = now.getMonth();
-            const after3 = new Date(y, m + 3, 1);
-            const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
-            return lastDay.toLocaleDateString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit'}).replace(/\//g, '-');
-        }
-        document.addEventListener("DOMContentLoaded", function() {
-            document.getElementById('start_date').value = getToday();
-            document.getElementById('end_date').value = getThreeMonthLast();
-            document.getElementById('transfer_date').value = getToday();
-            {% if g.user %}
-                document.getElementById('manager').value = "{{ g.user['username'] }}";
-            {% endif %}
-
-            // 所有者テーブル生成
-            if (typeof createOwnerTables === 'function') createOwnerTables();
-
-            // 譲渡欄制御
-            const cb_transfer = document.getElementById('with_transfer_cb');
-            const transferDetailArea = document.getElementById('transfer-detail-area');
-            cb_transfer.addEventListener('change', function() {
-                transferDetailArea.style.display = cb_transfer.checked ? "block" : "none";
-                if (cb_transfer.checked) createTransferBranchTables();
-                else document.getElementById('transfer-branch-tables').innerHTML = '';
-            });
-        });
-
-        function checkAndSubmit() {
-            var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
-            if (checks.length > 0) {
-                alert("全ての数量チェックにチェックしてください");
-                return false;
-            }
-            var cb_transfer = document.getElementById('with_transfer_cb');
-            if (cb_transfer.checked) {
-                var checkedBranches = document.querySelectorAll('input[name="transfer_branch_ids"]:checked');
-                if (checkedBranches.length == 0) {
-                    alert("譲渡する枝番を1つ以上選択してください");
-                    return false;
-                }
-                var transferComment = document.getElementById('transfer_comment').value.trim();
-                if (!transferComment) {
-                    alert("譲渡コメントを入力してください");
-                    return false;
-                }
-            }
-            return true;
-        }
+    <div class="button-group">
+        <button type="submit" class="main-btn">申請</button>
+        <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
+    </div>
+</form>
+{% endif %}
+{% if finish %}
+<h2>申請内容</h2>
+<table>
+    <tr>
+        <th>ID</th>
+        {% for f in fields %}
+        <th>{{ f.name }}</th>
+        {% endfor %}
+    </tr>
+    {% for item in items %}
+    <tr>
+        <td>{{ item['id'] }}</td>
+        {% for f in fields %}
+        <td>{{ item[f.key] }}</td>
+        {% endfor %}
+    </tr>
+    {% endfor %}
+</table>
+<div class="button-group" style="margin-top: 20px;">
+    <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+</div>
+{% endif %}
+<script>
+    // 日付セット
+    function getToday() {
+        const d = new Date();
+        return d.toISOString().slice(0, 10);
+    }
+    function getThreeMonthLast() {
+        const now = new Date();
+        const y = now.getFullYear();
+        const m = now.getMonth();
+        const after3 = new Date(y, m + 3, 1);
+        const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
+        return lastDay.toLocaleDateString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit'}).replace(/\//g, '-');
+    }
+    document.addEventListener("DOMContentLoaded", function() {
+        document.getElementById('start_date').value = getToday();
+        document.getElementById('end_date').value = getThreeMonthLast();
+        document.getElementById('transfer_date').value = getToday();
+        {% if g.user %}
+            document.getElementById('manager').value = "{{ g.user['username'] }}";
+        {% endif %}
 
         // 所有者テーブル生成
-        function createOwnerTables() {
-            let area = document.getElementById('owner-tables-area');
-            area.innerHTML = '';
-            let items = [];
-            {% for item in items %}
-                items.push({
-                    id: "{{ item['id'] }}",
-                    product_name: "{{ item['product_name']|default('')|e }}",
-                    branches: {{ item['available_branches']|tojson|safe }}
-                });
-            {% endfor %}
-            let username = "{{ g.user['username'] }}";
-            let allHtml = `<b>所有者</b>`;
-            for (let it of items) {
-                let t = `<div style="margin-top:12px; margin-bottom:20px;"><b>ID ${it.id}（${it.product_name}）</b><br>
-                    <table style="border-collapse:collapse;">
-                    <tr>
-                        <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
-                        <th style="border:1px solid #aaa;padding:5px 10px;">所有者</th>
-                    </tr>`;
-                for (let b of it.branches) {
-                    t += `<tr>
-                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
-                    <td style="border:1px solid #aaa;padding:5px 10px;" contenteditable="true">
-                        <input type="hidden" name="owner_list_${it.id}" value="${username}">
-                        ${username}
-                    </td>
-                    </tr>`;
-                }
-                t += `</table></div>`;
-                allHtml += t;
-            }
-            area.innerHTML = allHtml;
-            area.style.display = "block";
-            // 編集内容をhidden inputに反映
-            let tds = area.querySelectorAll('td[contenteditable="true"]');
-            tds.forEach(td => {
-                td.addEventListener('input', function() {
-                    let input = td.querySelector('input[type="hidden"]');
-                    input.value = td.innerText.trim();
-                });
-            });
-        }
+        if (typeof createOwnerTables === 'function') createOwnerTables();
 
-        // 譲渡対象枝番テーブル生成
-        function createTransferBranchTables() {
-            let area = document.getElementById('transfer-branch-tables');
-            area.innerHTML = '';
-            let items = [];
-            {% for item in items %}
-                items.push({
-                    id: "{{ item['id'] }}",
-                    product_name: "{{ item['product_name']|default('')|e }}",
-                    branches: {{ item['available_branches']|tojson|safe }}
-                });
-            {% endfor %}
-            let allHtml = "";
-            for (let it of items) {
-                let t = `<div style="margin-bottom:18px;"><b>ID ${it.id}（${it.product_name}） 譲渡する枝番を選択</b>
-                    <table style="border-collapse:collapse;">
-                    <tr>
-                        <th style="border:1px solid #aaa;padding:5px 10px;">選択</th>
-                        <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
-                    </tr>`;
-                for (let b of it.branches) {
-                    t += `<tr>
-                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">
-                        <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${b}">
-                    </td>
-                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
-                    </tr>`;
-                }
-                t += `</table></div>`;
-                allHtml += t;
-            }
-            area.innerHTML = allHtml;
-        }
-
-        // 承認者欄の初期値セット
-        function setupApproverSelector(approverInputId, approverList, defaultApprover) {
-            var approverInput = document.getElementById(approverInputId);
-            approverInput.value = defaultApprover || "";
-            approverInput.readOnly = false;
-            approverInput.style.cursor = "pointer";
-
-            var dropdown = document.createElement('div');
-            dropdown.style.position = 'absolute';
-            dropdown.style.background = '#fff';
-            dropdown.style.border = '1px solid #bbb';
-            dropdown.style.borderRadius = '6px';
-            dropdown.style.boxShadow = '0 2px 8px #bbb8';
-            dropdown.style.zIndex = '99';
-            dropdown.style.display = 'none';
-            dropdown.style.minWidth = '220px';
-
-            approverInput.parentNode.style.position = 'relative';
-            approverInput.parentNode.appendChild(dropdown);
-
-            function showDropdown() {
-                dropdown.innerHTML = '';
-                approverList.forEach(function(u) {
-                    var item = document.createElement('div');
-                    item.textContent = u;
-                    item.style.padding = "6px 16px";
-                    item.style.cursor = "pointer";
-                    item.onmouseover = function() { item.style.background = "#e3f2fd"; };
-                    item.onmouseout  = function() { item.style.background = "#fff"; };
-                    item.onclick = function() {
-                        approverInput.value = u;
-                        dropdown.style.display = "none";
-                    };
-                    dropdown.appendChild(item);
-                });
-                dropdown.style.display = 'block';
-            }
-            approverInput.addEventListener('focus', showDropdown);
-            approverInput.addEventListener('click', showDropdown);
-
-            document.addEventListener('click', function(e) {
-                if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.style.display = 'none';
-                }
-            });
-        }
-        document.addEventListener('DOMContentLoaded', function(){
-            var approverList = {{ approver_list|tojson|safe }};
-            var defaultApprover = "{{ approver_default|e }}";
-            setupApproverSelector("approver", approverList, defaultApprover);
+        // 譲渡欄制御
+        const cb_transfer = document.getElementById('with_transfer_cb');
+        const transferDetailArea = document.getElementById('transfer-detail-area');
+        cb_transfer.addEventListener('change', function() {
+            transferDetailArea.style.display = cb_transfer.checked ? "block" : "none";
+            if (cb_transfer.checked) createTransferBranchTables();
+            else document.getElementById('transfer-branch-tables').innerHTML = '';
         });
-    </script>
-</body>
-</html>
+    });
+
+    function checkAndSubmit() {
+        var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
+        if (checks.length > 0) {
+            alert("全ての数量チェックにチェックしてください");
+            return false;
+        }
+        var cb_transfer = document.getElementById('with_transfer_cb');
+        if (cb_transfer.checked) {
+            var checkedBranches = document.querySelectorAll('input[name="transfer_branch_ids"]:checked');
+            if (checkedBranches.length == 0) {
+                alert("譲渡する枝番を1つ以上選択してください");
+                return false;
+            }
+            var transferComment = document.getElementById('transfer_comment').value.trim();
+            if (!transferComment) {
+                alert("譲渡コメントを入力してください");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // 所有者テーブル生成
+    function createOwnerTables() {
+        let area = document.getElementById('owner-tables-area');
+        area.innerHTML = '';
+        let items = [];
+        {% for item in items %}
+            items.push({
+                id: "{{ item['id'] }}",
+                product_name: "{{ item['product_name']|default('')|e }}",
+                branches: {{ item['available_branches']|tojson|safe }}
+            });
+        {% endfor %}
+        let username = "{{ g.user['username'] }}";
+        let allHtml = `<b>所有者</b>`;
+        for (let it of items) {
+            let t = `<div style="margin-top:12px; margin-bottom:20px;"><b>ID ${it.id}（${it.product_name}）</b><br>
+                <table style="border-collapse:collapse;">
+                <tr>
+                    <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
+                    <th style="border:1px solid #aaa;padding:5px 10px;">所有者</th>
+                </tr>`;
+            for (let b of it.branches) {
+                t += `<tr>
+                <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
+                <td style="border:1px solid #aaa;padding:5px 10px;" contenteditable="true">
+                    <input type="hidden" name="owner_list_${it.id}" value="${username}">
+                    ${username}
+                </td>
+                </tr>`;
+            }
+            t += `</table></div>`;
+            allHtml += t;
+        }
+        area.innerHTML = allHtml;
+        area.style.display = "block";
+        // 編集内容をhidden inputに反映
+        let tds = area.querySelectorAll('td[contenteditable="true"]');
+        tds.forEach(td => {
+            td.addEventListener('input', function() {
+                let input = td.querySelector('input[type="hidden"]');
+                input.value = td.innerText.trim();
+            });
+        });
+    }
+
+    // 譲渡対象枝番テーブル生成
+    function createTransferBranchTables() {
+        let area = document.getElementById('transfer-branch-tables');
+        area.innerHTML = '';
+        let items = [];
+        {% for item in items %}
+            items.push({
+                id: "{{ item['id'] }}",
+                product_name: "{{ item['product_name']|default('')|e }}",
+                branches: {{ item['available_branches']|tojson|safe }}
+            });
+        {% endfor %}
+        let allHtml = "";
+        for (let it of items) {
+            let t = `<div style="margin-bottom:18px;"><b>ID ${it.id}（${it.product_name}） 譲渡する枝番を選択</b>
+                <table style="border-collapse:collapse;">
+                <tr>
+                    <th style="border:1px solid #aaa;padding:5px 10px;">選択</th>
+                    <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
+                </tr>`;
+            for (let b of it.branches) {
+                t += `<tr>
+                <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">
+                    <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${b}">
+                </td>
+                <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
+                </tr>`;
+            }
+            t += `</table></div>`;
+            allHtml += t;
+        }
+        area.innerHTML = allHtml;
+    }
+
+    // 承認者欄の初期値セット
+    function setupApproverSelector(approverInputId, approverList, defaultApprover) {
+        var approverInput = document.getElementById(approverInputId);
+        approverInput.value = defaultApprover || "";
+        approverInput.readOnly = false;
+        approverInput.style.cursor = "pointer";
+
+        var dropdown = document.createElement('div');
+        dropdown.style.position = 'absolute';
+        dropdown.style.background = '#fff';
+        dropdown.style.border = '1px solid #bbb';
+        dropdown.style.borderRadius = '6px';
+        dropdown.style.boxShadow = '0 2px 8px #bbb8';
+        dropdown.style.zIndex = '99';
+        dropdown.style.display = 'none';
+        dropdown.style.minWidth = '220px';
+
+        approverInput.parentNode.style.position = 'relative';
+        approverInput.parentNode.appendChild(dropdown);
+
+        function showDropdown() {
+            dropdown.innerHTML = '';
+            approverList.forEach(function(u) {
+                var item = document.createElement('div');
+                item.textContent = u;
+                item.style.padding = "6px 16px";
+                item.style.cursor = "pointer";
+                item.onmouseover = function() { item.style.background = "#e3f2fd"; };
+                item.onmouseout  = function() { item.style.background = "#fff"; };
+                item.onclick = function() {
+                    approverInput.value = u;
+                    dropdown.style.display = "none";
+                };
+                dropdown.appendChild(item);
+            });
+            dropdown.style.display = 'block';
+        }
+        approverInput.addEventListener('focus', showDropdown);
+        approverInput.addEventListener('click', showDropdown);
+
+        document.addEventListener('click', function(e) {
+            if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
+    }
+    document.addEventListener('DOMContentLoaded', function(){
+        var approverList = {{ approver_list|tojson|safe }};
+        var defaultApprover = "{{ approver_default|e }}";
+        setupApproverSelector("approver", approverList, defaultApprover);
+    });
+</script>
+{% endblock %}

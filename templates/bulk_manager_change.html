@@ -1,77 +1,79 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>管理者一括変更</title>
-    <style>
-        table { border-collapse: collapse; width: 98%; }
-        th, td { border: 1px solid #aaa; padding: 6px 12px; }
-        th { background: #eee; }
-        .button-group { margin-top: 15px; }
-        .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
-        .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+{# templates/admin_bulk_change.html #}
+{% extends "_base.html" %}
 
-        /* 統一ボタンスタイル */
-        .main-btn, .cancel-btn {
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: bold;
-            padding: 6px 16px;
-            margin-right: 8px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background .15s;
-        }
-        .main-btn {
-            background: #4285f4;
-            color: #fff;
-        }
-        .main-btn:hover { background: #23468e; color: #fff; }
-        .cancel-btn {
-            background: #aaa;
-            color: #fff;
-        }
-        .cancel-btn:hover { background: #888; color: #fff; }
-    </style>
-</head>
-<body>
-    <h1>選択アイテムの管理者一括変更</h1>
-    {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="error-message">
-        {% for msg in messages %}
-          {{ msg }}<br>
-        {% endfor %}
-      </div>
+{% block title %}管理者一括変更{% endblock %}
+
+{% block head %}
+<style>
+    table { border-collapse: collapse; width: 98%; }
+    th, td { border: 1px solid #aaa; padding: 6px 12px; }
+    th { background: #eee; }
+    .button-group { margin-top: 15px; }
+    .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+    .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
+
+    /* 統一ボタンスタイル */
+    .main-btn, .cancel-btn {
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        font-weight: bold;
+        padding: 6px 16px;
+        margin-right: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background .15s;
+    }
+    .main-btn {
+        background: #4285f4;
+        color: #fff;
+    }
+    .main-btn:hover { background: #23468e; color: #fff; }
+    .cancel-btn {
+        background: #aaa;
+        color: #fff;
+    }
+    .cancel-btn:hover { background: #888; color: #fff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>選択アイテムの管理者一括変更</h1>
+{% with messages = get_flashed_messages() %}
+{% if messages %}
+  <div class="error-message">
+    {% for msg in messages %}
+      {{ msg }}<br>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endwith %}
+<form method="post">
+    {% if request.args.get('from_menu') %}
+        <input type="hidden" name="from_menu" value="1">
     {% endif %}
-    {% endwith %}
-    <form method="post">
-        {% if request.args.get('from_menu') %}
-            <input type="hidden" name="from_menu" value="1">
-        {% endif %}
-        <input type="hidden" name="ids" value="{{ ids }}">
-        <table>
-            <tr>
-                <th>ID</th>
-                <th>製品名</th>
-                <th>現在の管理者</th>
-            </tr>
-            {% for item in items %}
-            <tr>
-                <td>{{ item['id'] }}</td>
-                <td>{{ item['product_name'] }}</td>
-                <td>{{ item['sample_manager'] }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-        <div style="margin-top:18px;">
-            <label for="new_manager"><b>新しい管理者名:</b></label>
-            <input type="text" id="new_manager" name="new_manager" style="padding:4px 10px; font-size:1rem;">
-        </div>
-        <div class="button-group">
-            <button type="submit" class="main-btn">一括変更</button>
-            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">キャンセル</a>
-        </div>
-    </form>
-</body>
-</html>
+    <input type="hidden" name="ids" value="{{ ids }}">
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>製品名</th>
+            <th>現在の管理者</th>
+        </tr>
+        {% for item in items %}
+        <tr>
+            <td>{{ item['id'] }}</td>
+            <td>{{ item['product_name'] }}</td>
+            <td>{{ item['sample_manager'] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <div style="margin-top:18px;">
+        <label for="new_manager"><b>新しい管理者名:</b></label>
+        <input type="text" id="new_manager" name="new_manager" style="padding:4px 10px; font-size:1rem;">
+    </div>
+    <div class="button-group">
+        <button type="submit" class="main-btn">一括変更</button>
+        <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">キャンセル</a>
+    </div>
+</form>
+{% endblock %}

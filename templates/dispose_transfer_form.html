@@ -1,231 +1,225 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>破棄・譲渡申請</title>
-    <style>
-        table { border-collapse: collapse; width: 98%; }
-        th, td { border: 1px solid #aaa; padding: 5px 10px; }
-        th { background: #eee; }
-        .button-group { margin-top: 18px; }
-        .main-btn {
-            background: #4285f4;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: bold;
-            padding: 6px 16px;
-            margin-right: 8px;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background .15s;
+{# templates/dispose_request.html #}
+{% extends "_base.html" %}
+
+{% block title %}破棄・譲渡申請{% endblock %}
+
+{% block head %}
+<style>
+    table { border-collapse: collapse; width: 98%; }
+    th, td { border: 1px solid #aaa; padding: 5px 10px; }
+    th { background: #eee; }
+    .button-group { margin-top: 18px; }
+    .main-btn {
+        background: #4285f4;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        font-size: 1rem;
+        font-weight: bold;
+        padding: 6px 16px;
+        margin-right: 8px;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background .15s;
+    }
+    .main-btn:hover { background: #23468e; color: #fff; }
+    .form-field { margin-bottom: 12px; }
+    .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
+    .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+    .form-textarea { height: 56px; resize: vertical; }
+    .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
+    .parent-table th, .parent-table td { font-size: 0.97em; }
+</style>
+<script>
+    // 日付セット
+    function getToday() {
+        const d = new Date();
+        return d.toISOString().slice(0, 10);
+    }
+
+    function checkAndSubmit() {
+        {% for item in items %}
+        if (!document.querySelector('input[name="qty_checked_{{ item["id"] }}"]:checked')) {
+            alert("ID:{{ item['id'] }} の数量チェックにチェックしてください");
+            return false;
         }
-        .main-btn:hover { background: #23468e; color: #fff; }
-        .form-field { margin-bottom: 12px; }
-        .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
-        .form-input, .form-textarea { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
-        .form-textarea { height: 56px; resize: vertical; }
-        .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
-        .parent-table th, .parent-table td { font-size: 0.97em; }
-    </style>
-    <script>
-        // 日付セット
-        function getToday() {
-            const d = new Date();
-            return d.toISOString().slice(0, 10);
+        {% endfor %}
+        if (!document.querySelector('input[name="dispose_type"]:checked')) {
+            alert("破棄か譲渡の種別を選択してください");
+            return false;
         }
+        return true;
+    }
+    function toggleSelectAll(parentId, checked) {
+        var boxes = document.querySelectorAll('.child-checkbox-' + parentId);
+        boxes.forEach(function(b) { b.checked = checked; });
+    }
+    
+    // 承認者欄：初期値セット＆全マネージャのプルダウン選択
+    function setupApproverSelector(approverInputId, approverList, defaultApprover) {
+        var approverInput = document.getElementById(approverInputId);
+        approverInput.value = defaultApprover || "";
+        approverInput.readOnly = false;
+        approverInput.style.cursor = "pointer";
 
-        function checkAndSubmit() {
-            {% for item in items %}
-            if (!document.querySelector('input[name="qty_checked_{{ item["id"] }}"]:checked')) {
-                alert("ID:{{ item['id'] }} の数量チェックにチェックしてください");
-                return false;
-            }
-            {% endfor %}
-            if (!document.querySelector('input[name="dispose_type"]:checked')) {
-                alert("破棄か譲渡の種別を選択してください");
-                return false;
-            }
-            return true;
-        }
-        function toggleSelectAll(parentId, checked) {
-            var boxes = document.querySelectorAll('.child-checkbox-' + parentId);
-            boxes.forEach(function(b) { b.checked = checked; });
-        }
-        
-        // 承認者欄：初期値セット＆全マネージャのプルダウン選択
-        function setupApproverSelector(approverInputId, approverList, defaultApprover) {
-            var approverInput = document.getElementById(approverInputId);
-            approverInput.value = defaultApprover || "";
-            approverInput.readOnly = false;
-            approverInput.style.cursor = "pointer";
+        var dropdown = document.createElement('div');
+        dropdown.style.position = 'absolute';
+        dropdown.style.background = '#fff';
+        dropdown.style.border = '1px solid #bbb';
+        dropdown.style.borderRadius = '6px';
+        dropdown.style.boxShadow = '0 2px 8px #bbb8';
+        dropdown.style.zIndex = '99';
+        dropdown.style.display = 'none';
+        dropdown.style.minWidth = '220px';
 
-            var dropdown = document.createElement('div');
-            dropdown.style.position = 'absolute';
-            dropdown.style.background = '#fff';
-            dropdown.style.border = '1px solid #bbb';
-            dropdown.style.borderRadius = '6px';
-            dropdown.style.boxShadow = '0 2px 8px #bbb8';
-            dropdown.style.zIndex = '99';
-            dropdown.style.display = 'none';
-            dropdown.style.minWidth = '220px';
+        approverInput.parentNode.style.position = 'relative';
+        approverInput.parentNode.appendChild(dropdown);
 
-            approverInput.parentNode.style.position = 'relative';
-            approverInput.parentNode.appendChild(dropdown);
-
-            function showDropdown() {
-                dropdown.innerHTML = '';
-                approverList.forEach(function(u) {
-                    var item = document.createElement('div');
-                    item.textContent = u;
-                    item.style.padding = "6px 16px";
-                    item.style.cursor = "pointer";
-                    item.onmouseover = function() { item.style.background = "#e3f2fd"; };
-                    item.onmouseout  = function() { item.style.background = "#fff"; };
-                    item.onclick = function() {
-                        approverInput.value = u;
-                        dropdown.style.display = "none";
-                    };
-                    dropdown.appendChild(item);
-                });
-                dropdown.style.display = 'block';
-            }
-            approverInput.addEventListener('focus', showDropdown);
-            approverInput.addEventListener('click', showDropdown);
-
-            document.addEventListener('click', function(e) {
-                if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
-                    dropdown.style.display = 'none';
-                }
+        function showDropdown() {
+            dropdown.innerHTML = '';
+            approverList.forEach(function(u) {
+                var item = document.createElement('div');
+                item.textContent = u;
+                item.style.padding = "6px 16px";
+                item.style.cursor = "pointer";
+                item.onmouseover = function() { item.style.background = "#e3f2fd"; };
+                item.onmouseout  = function() { item.style.background = "#fff"; };
+                item.onclick = function() {
+                    approverInput.value = u;
+                    dropdown.style.display = "none";
+                };
+                dropdown.appendChild(item);
             });
+            dropdown.style.display = 'block';
         }
+        approverInput.addEventListener('focus', showDropdown);
+        approverInput.addEventListener('click', showDropdown);
 
-        document.addEventListener('DOMContentLoaded', function(){
-            // Pythonから受け取ったリスト・初期値をJS変数にセット
-            var approverList = {{ approver_list|tojson|safe }};
-            var defaultApprover = "{{ approver_default|e }}";
-            setupApproverSelector("approver", approverList, defaultApprover);
-            document.getElementById('dispose_date').value = getToday();
+        document.addEventListener('click', function(e) {
+            if (!approverInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.style.display = 'none';
+            }
         });
-    </script>
-</head>
-<body>
-    <div style="width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;">
-        <div style="margin-top:18px; margin-bottom:2px;">
-            <span style="font-weight:bold; color:#3161c4; margin-right:12px;">
-                {{ g.user['username'] }} さん
-            </span>
-            <a href="{{ url_for('logout') }}" style="background:#db4437; color:#fff; padding:6px 14px; border-radius:6px; text-decoration:none; font-weight:bold;">ログアウト</a>
-        </div>
-    </div>
-    <h1>破棄・譲渡申請</h1>
-    {% if message %}
-      <div class="info-message">{{ message }}</div>
-    {% endif %}
-    {% if not finish %}
-    <form method="post" onsubmit="return checkAndSubmit();">
-        {% if request.args.get('from_menu') %}
-            <input type="hidden" name="from_menu" value="1">
-        {% endif %}
-        <input type="hidden" name="action" value="submit">
+    }
 
-        <!-- 親アイテム（親ID）の一覧表：fieldsすべてを出力 -->
-        <table class="parent-table" style="margin-bottom:24px;">
+    document.addEventListener('DOMContentLoaded', function(){
+        // Pythonから受け取ったリスト・初期値をJS変数にセット
+        var approverList = {{ approver_list|tojson|safe }};
+        var defaultApprover = "{{ approver_default|e }}";
+        setupApproverSelector("approver", approverList, defaultApprover);
+        document.getElementById('dispose_date').value = getToday();
+    });
+</script>
+{% endblock %}
+
+{% block content %}
+<h1>破棄・譲渡申請</h1>
+{% if message %}
+  <div class="info-message">{{ message }}</div>
+{% endif %}
+{% if not finish %}
+<form method="post" onsubmit="return checkAndSubmit();">
+    {% if request.args.get('from_menu') %}
+        <input type="hidden" name="from_menu" value="1">
+    {% endif %}
+    <input type="hidden" name="action" value="submit">
+
+    <!-- 親アイテム（親ID）の一覧表：fieldsすべてを出力 -->
+    <table class="parent-table" style="margin-bottom:24px;">
+        <tr>
+            <th>ID</th>
+            {% for f in fields %}
+            <th>{{ f.name }}</th>
+            {% endfor %}
+            <th>サンプル数</th>
+            <th>数量チェック</th>
+        </tr>
+        {% for item in items %}
+        <tr>
+            <td>
+                {{ item['id'] }}
+                <input type="hidden" name="item_id" value="{{ item['id'] }}">
+            </td>
+            {% for f in fields %}
+            <td>{{ item[f.key] }}</td>
+            {% endfor %}
+            <td>{{ item.sample_count }}</td>
+            <td>
+                <input type="checkbox" name="qty_checked_{{ item['id'] }}">
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <div class="form-field">
+        <label class="form-label"><b>申請種別：</b></label>
+        <label>
+            <input type="radio" name="dispose_type" value="破棄" checked>破棄
+        </label>
+        <label>
+            <input type="radio" name="dispose_type" value="譲渡">譲渡
+        </label>
+    </div>
+
+    {% for item in items %}
+    <div style="margin-bottom:32px;">
+        <h3>【ID: {{ item['id'] }}】</h3>
+        <table>
             <tr>
-                <th>ID</th>
-                {% for f in fields %}
-                <th>{{ f.name }}</th>
-                {% endfor %}
-                <th>サンプル数</th>
-                <th>数量チェック</th>
+                <th style="width:70px; text-align:center;">
+                    <input type="checkbox" onclick="toggleSelectAll('{{ item['id'] }}', this.checked);">
+                </th>
+                <th>枝番</th>
+                <th>所有者</th>
+                <th>状態</th>
+                <th>備考</th>
             </tr>
-            {% for item in items %}
+            {% for ci in child_items if ci['item_id'] == item['id'] and ci['status'] not in ['破棄', '譲渡'] %}
             <tr>
-                <td>
-                    {{ item['id'] }}
-                    <input type="hidden" name="item_id" value="{{ item['id'] }}">
+                <td style="text-align:center;">
+                    <input type="checkbox" name="target_child_ids" value="{{ ci['id'] }}" class="child-checkbox-{{ item['id'] }}">
                 </td>
-                {% for f in fields %}
-                <td>{{ item[f.key] }}</td>
-                {% endfor %}
-                <td>{{ item.sample_count }}</td>
-                <td>
-                    <input type="checkbox" name="qty_checked_{{ item['id'] }}">
-                </td>
+                <td>{{ ci['branch_no'] }}</td>
+                <td>{{ ci['owner'] }}</td>
+                <td>{{ ci['status'] }}</td>
+                <td>{{ ci['comment'] }}</td>
             </tr>
             {% endfor %}
         </table>
-
-        <div class="form-field">
-            <label class="form-label"><b>申請種別：</b></label>
-            <label>
-                <input type="radio" name="dispose_type" value="破棄" checked>破棄
-            </label>
-            <label>
-                <input type="radio" name="dispose_type" value="譲渡">譲渡
-            </label>
-        </div>
-
-        {% for item in items %}
-        <div style="margin-bottom:32px;">
-            <h3>【ID: {{ item['id'] }}】</h3>
-            <table>
-                <tr>
-                    <th style="width:70px; text-align:center;">
-                        <input type="checkbox" onclick="toggleSelectAll('{{ item['id'] }}', this.checked);">
-                    </th>
-                    <th>枝番</th>
-                    <th>所有者</th>
-                    <th>状態</th>
-                    <th>備考</th>
-                </tr>
-                {% for ci in child_items if ci['item_id'] == item['id'] and ci['status'] not in ['破棄', '譲渡'] %}
-                <tr>
-                    <td style="text-align:center;">
-                        <input type="checkbox" name="target_child_ids" value="{{ ci['id'] }}" class="child-checkbox-{{ item['id'] }}">
-                    </td>
-                    <td>{{ ci['branch_no'] }}</td>
-                    <td>{{ ci['owner'] }}</td>
-                    <td>{{ ci['status'] }}</td>
-                    <td>{{ ci['comment'] }}</td>
-                </tr>
-                {% endfor %}
-            </table>
-        </div>
-        {% endfor %}
-
-        <div class="form-field">
-            <label class="form-label" for="handler">対応者</label>
-            <input class="form-input" type="text" id="handler" name="handler" value="{{ g.user['username'] }}">
-        </div>
-        <div class="form-field">
-            <label class="form-label" for="dispose_date">破棄・譲渡日</label>
-            <input class="form-input" type="date" id="dispose_date" name="dispose_date">
-        </div>
-        <div class="form-field">
-            <label class="form-label" for="dispose_comment">破棄・譲渡コメント</label>
-            <textarea class="form-textarea" id="dispose_comment" name="dispose_comment"></textarea>
-        </div>
-        <div class="form-field">
-            <label class="form-label" for="comment">申請コメント</label>
-            <textarea class="form-textarea" id="comment" name="comment"></textarea>
-        </div>
-        <div class="form-field">
-            <label class="form-label" for="approver">承認者</label>
-            <input class="form-input" type="text" id="approver" name="approver" value="">
-        </div>
-        <div class="button-group">
-            <button type="submit" class="main-btn">申請</button>
-            <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
-        </div>
-    </form>
-    {% endif %}
-    {% if finish %}
-    <h2>申請内容</h2>
-    <!-- ここは適宜実装 -->
-    <div class="button-group" style="margin-top: 20px;">
-        <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
     </div>
-    {% endif %}
-</body>
-</html>
+    {% endfor %}
+
+    <div class="form-field">
+        <label class="form-label" for="handler">対応者</label>
+        <input class="form-input" type="text" id="handler" name="handler" value="{{ g.user['username'] }}">
+    </div>
+    <div class="form-field">
+        <label class="form-label" for="dispose_date">破棄・譲渡日</label>
+        <input class="form-input" type="date" id="dispose_date" name="dispose_date">
+    </div>
+    <div class="form-field">
+        <label class="form-label" for="dispose_comment">破棄・譲渡コメント</label>
+        <textarea class="form-textarea" id="dispose_comment" name="dispose_comment"></textarea>
+    </div>
+    <div class="form-field">
+        <label class="form-label" for="comment">申請コメント</label>
+        <textarea class="form-textarea" id="comment" name="comment"></textarea>
+    </div>
+    <div class="form-field">
+        <label class="form-label" for="approver">承認者</label>
+        <input class="form-input" type="text" id="approver" name="approver" value="">
+    </div>
+    <div class="button-group">
+        <button type="submit" class="main-btn">申請</button>
+        <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
+    </div>
+</form>
+{% endif %}
+{% if finish %}
+<h2>申請内容</h2>
+<!-- ここは適宜実装 -->
+<div class="button-group" style="margin-top: 20px;">
+    <a href="{{ url_for('index') }}" class="main-btn" style="background:#4285f4;">一覧に戻る</a>
+</div>
+{% endif %}
+{% endblock %}
