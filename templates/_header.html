@@ -6,14 +6,15 @@
             box-sizing: border-box; background: #fff; z-index: 100;">
 
   <!-- 左：タイトル -->
-  <div style="font-size: 20px; font-weight: bold; color: #23468e;">
-    在庫管理システム
-  </div>
+ <a href="{{ url_for('index') }}"
+   style="font-size: 20px; font-weight: bold; color: #23468e; text-decoration: none;">
+  在庫管理システム
+</a>
 
   <!-- 右：ユーザー名＋設定メニュー＋ログアウト -->
   <div style="display: flex; align-items: center; gap: 12px;">
     <span style="font-weight: bold; color: #3161c4;">
-      {{ g.user['username'] }} さん
+      {{ g.user['department'] }} {{ g.user['realname'] }} さん
     </span>
 
     {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
