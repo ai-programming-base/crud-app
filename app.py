@@ -6,11 +6,39 @@ from functools import wraps
 import json
 from datetime import datetime, timedelta, timezone
 
+import logging
+from logging.handlers import RotatingFileHandler
+import sys
+
 from auth import authenticate
 from send_mail import send_mail
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
+
+# グローバルロガーを作成
+logger = logging.getLogger("myapp")  # 任意の名前
+
+# フォーマッター
+formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s [%(filename)s:%(lineno)d]')
+
+# ファイル用ハンドラ（INFO以上）
+file_handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(formatter)
+
+# stdout用ハンドラ（WARNING以上）
+stdout_handler = logging.StreamHandler(sys.stdout)
+stdout_handler.setLevel(logging.DEBUG)
+stdout_handler.setFormatter(formatter)
+
+# 既存のハンドラをリセット（多重出力防止）
+logger.handlers = []
+logger.setLevel(logging.DEBUG)
+logger.addHandler(file_handler)
+logger.addHandler(stdout_handler)
+logger.propagate = False  # これでroot loggerへの伝播を防止
+
 DATABASE = 'items.db'
 
 # フィールド定義（fields.jsonを利用）
