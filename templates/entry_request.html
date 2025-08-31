@@ -210,7 +210,7 @@
 {% endif %}
 <script>
     {% if error_dialog_message %}
-        alert("{{ error_dialog_message|escapejs }}");
+        alert("{{ error_dialog_message|tojson }}");
     {% endif %}
     // properユーザーサジェスト
     const properUsers = {{ proper_users|tojson|safe }};

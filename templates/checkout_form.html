@@ -270,7 +270,7 @@
         });
         // サーババリデーションエラーをalertで
         {% if error_dialog_message %}
-            alert("{{ error_dialog_message|escapejs }}");
+            alert("{{ error_dialog_message|tojson }}");
         {% endif %}
         // ---- 以降既存（owner/transferテーブル、日付セット等） ----
         document.getElementById('start_date').value = getToday();
