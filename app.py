@@ -1569,7 +1569,7 @@ def approval():
                 elif status == "破棄・譲渡申請中":
                     dispose_type = new_values.get('dispose_type')
                     target_child_branches = new_values.get('target_child_branches', [])
-                    transfer_dispose_date = new_values.get("transfer_dispose_date", "")
+                    transfer_dispose_date = new_values.get("dispose_date", "")
                     dispose_comment = new_values.get('dispose_comment', '')
 
                     new_status = "破棄" if dispose_type == "破棄" else "譲渡"
