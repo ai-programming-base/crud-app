@@ -24,15 +24,139 @@
     .main-btn:hover { background: #23468e; color: #fff; }
     .form-field { margin-bottom: 12px; }
     .form-label { display: block; font-weight: bold; margin-bottom: 4px; }
-    .form-input, .form-textarea, .form-select { width: 320px; font-size: 1rem; padding: 5px; border-radius: 4px; border: 1px solid #bbb; }
+    .form-input, .form-textarea, .form-select {
+        width: 320px; font-size: 1rem; padding: 5px;
+        border-radius: 4px; border: 1px solid #bbb;
+    }
     .form-textarea { height: 56px; resize: vertical; }
     .info-message { color: #33691e; font-weight: bold; margin: 8px 0; }
     .parent-table th, .parent-table td { font-size: 0.97em; }
+    .form-input[type="date"] {
+        width: 140px;
+        min-width: 100px;
+        max-width: 180px;
+    }
+    /* 入力補助（入庫と同じ見た目） */
+    .input-clear-wrap { position: relative; display: inline-block; width: 320px; vertical-align: middle; }
+    .form-input { width: 100%; box-sizing: border-box; }
+    .clear-btn {
+      position: absolute; right: 6px; top: 55%; transform: translateY(-40%);
+      cursor: pointer; font-size: 1.03em; color: #bbb; background: none; border: none;
+      line-height: 1; display: none; z-index: 10; width: 1.3em; height: 1.3em; text-align: center;
+      transition: color 0.13s; user-select: none;
+    }
+    .clear-btn:hover { color: #888; }
+    .suggest-list {
+      position: absolute; background: #fff; border: 1px solid #bbb; border-radius: 6px;
+      box-shadow: 0 2px 8px #bbb8; z-index: 100; min-width: 320px; max-height: 180px; overflow-y: auto;
+      display: none;
+    }
+    .suggest-item { padding: 6px 16px; cursor: pointer; }
+    .suggest-item:hover, .suggest-item.active { background: #e3f2fd; }
+    /* エラー表示 */
+    #handler_input.invalid { border-color: #e53935; background: #ffebee; }
 </style>
+
 <script>
     function getToday() {
         const d = new Date();
         return d.toISOString().slice(0, 10);
+    }
+
+    // properユーザー（対応者候補）
+    const properUsers = {{ proper_users|tojson|safe }};
+    const handlerDefaultUsername = "{{ handler_default|e }}";
+    const handlerDefaultUser = properUsers.find(u => u.username === handlerDefaultUsername);
+
+    function formatUser(user) {
+        return (user.department ? user.department + " " : "") + user.realname;
+    }
+
+    function renderSuggest(container, users, onPick) {
+        container.innerHTML = "";
+        users.forEach(user => {
+            const div = document.createElement('div');
+            div.className = "suggest-item";
+            div.textContent = formatUser(user);
+            div.dataset.username = user.username;
+            div.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                onPick(user);
+            });
+            container.appendChild(div);
+        });
+        container.style.display = users.length > 0 ? "block" : "none";
+    }
+
+    function wireHandlerInput() {
+        const input = document.getElementById('handler_input');
+        const hidden = document.getElementById('handler');
+        const clearBtn = document.getElementById('handler_clear');
+        const suggest = document.getElementById('handler_suggest');
+
+        if (handlerDefaultUser) {
+            input.value = formatUser(handlerDefaultUser);
+            hidden.value = handlerDefaultUser.username;
+            clearBtn.style.display = "inline";
+        } else {
+            input.value = "";
+            hidden.value = "";
+            clearBtn.style.display = "none";
+        }
+
+        function pick(user) {
+            input.value = formatUser(user);
+            hidden.value = user.username;
+            suggest.style.display = "none";
+            clearBtn.style.display = "inline";
+            input.classList.remove('invalid');
+        }
+
+        input.addEventListener('focus', function() {
+            renderSuggest(suggest, properUsers, pick);
+            if (input.value) clearBtn.style.display = "inline";
+        });
+
+        input.addEventListener('input', function() {
+            const val = input.value.trim();
+            hidden.value = ""; input.classList.remove('invalid');
+            if (!val) {
+                suggest.style.display = "none";
+                clearBtn.style.display = "none";
+                return;
+            }
+            const filtered = properUsers.filter(
+                u => (u.realname && u.realname.indexOf(val) !== -1) ||
+                     (u.department && u.department.indexOf(val) !== -1) ||
+                     (u.username && u.username.indexOf(val) !== -1)
+            );
+            renderSuggest(suggest, filtered, pick);
+            clearBtn.style.display = "inline";
+        });
+
+        input.addEventListener('change', function() {
+            const txt = input.value.trim();
+            const exact = properUsers.find(u => formatUser(u) === txt) || properUsers.find(u => u.username === txt);
+            if (exact) pick(exact); else hidden.value = "";
+        });
+
+        input.addEventListener('blur', function() {
+            setTimeout(()=>{ suggest.style.display = "none"; }, 150);
+            if (input.value.trim() && !hidden.value) input.classList.add('invalid');
+        });
+
+        clearBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            input.value = ""; hidden.value = "";
+            clearBtn.style.display = "none"; suggest.style.display = "none";
+            input.classList.remove('invalid'); input.focus();
+        });
+
+        document.addEventListener('mousedown', function(e) {
+            if (!input.contains(e.target) && !suggest.contains(e.target) && e.target !== clearBtn) {
+                suggest.style.display = "none";
+            }
+        });
     }
 
     function checkAndSubmit() {
@@ -42,18 +166,31 @@
             return false;
         }
         {% endfor %}
+
+        var handlerHidden = document.getElementById('handler');
+        var handlerInput  = document.getElementById('handler_input');
+        if (!handlerHidden.value) {
+            alert("対応者の入力が不正です。properユーザーの候補から選択してください。");
+            handlerInput.classList.add('invalid');
+            handlerInput.focus();
+            return false;
+        }
+
         if (!document.querySelector('input[name="dispose_type"]:checked')) {
             alert("破棄か譲渡の種別を選択してください");
             return false;
         }
         return true;
     }
+
     function toggleSelectAll(parentId, checked) {
         var boxes = document.querySelectorAll('.child-checkbox-' + parentId);
         boxes.forEach(function(b) { b.checked = checked; });
     }
+
     document.addEventListener('DOMContentLoaded', function(){
         document.getElementById('dispose_date').value = getToday();
+        wireHandlerInput();
     });
 </script>
 {% endblock %}
@@ -99,12 +236,8 @@
 
     <div class="form-field">
         <label class="form-label"><b>申請種別：</b></label>
-        <label>
-            <input type="radio" name="dispose_type" value="破棄" checked>破棄
-        </label>
-        <label>
-            <input type="radio" name="dispose_type" value="譲渡">譲渡
-        </label>
+        <label><input type="radio" name="dispose_type" value="破棄" checked>破棄</label>
+        <label><input type="radio" name="dispose_type" value="譲渡">譲渡</label>
     </div>
 
     {% for item in items %}
@@ -135,10 +268,17 @@
     </div>
     {% endfor %}
 
-    <div class="form-field">
-        <label class="form-label" for="handler">対応者</label>
-        <input class="form-input" type="text" id="handler" name="handler" value="{{ g.user['username'] }}">
+    <!-- 対応者 -->
+    <div class="form-field relative">
+      <label class="form-label" for="handler_input">対応者（properのみ）</label>
+      <div class="input-clear-wrap">
+        <input class="form-input" type="text" id="handler_input" autocomplete="off" placeholder="部署名 氏名">
+        <span id="handler_clear" class="clear-btn" title="クリア">&#10005;</span>
+      </div>
+      <input type="hidden" id="handler" name="handler" value="">
+      <div id="handler_suggest" class="suggest-list"></div>
     </div>
+
     <div class="form-field">
         <label class="form-label" for="dispose_date">破棄・譲渡日</label>
         <input class="form-input" type="date" id="dispose_date" name="dispose_date">
@@ -151,7 +291,8 @@
         <label class="form-label" for="comment">申請コメント</label>
         <textarea class="form-textarea" id="comment" name="comment"></textarea>
     </div>
-    <!-- 承認者：ドロップダウン -->
+
+    <!-- 承認者 -->
     <div class="form-field">
         <label class="form-label" for="approver">承認者</label>
         <select class="form-select" id="approver" name="approver" required>
@@ -163,12 +304,14 @@
             {% endfor %}
         </select>
     </div>
+
     <div class="button-group">
         <button type="submit" class="main-btn">申請</button>
         <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
     </div>
 </form>
 {% endif %}
+
 {% if finish %}
 <h2>申請内容</h2>
 <div class="button-group" style="margin-top: 20px;">

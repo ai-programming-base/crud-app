@@ -333,6 +333,16 @@ def get_proper_users(db):
                 WHERE r.name = 'proper' ORDER BY u.department, u.username""")
     ]
 
+def get_partner_users(db):
+    return [
+        dict(username=row['username'], realname=row['realname'], department=row['department'])
+        for row in db.execute(
+            """SELECT u.username, u.realname, u.department
+                 FROM users u
+                 JOIN user_roles ur ON u.id = ur.user_id
+                 JOIN roles r ON ur.role_id = r.id
+                WHERE r.name = 'partner' ORDER BY u.department, u.username""")
+    ]
 
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
@@ -804,6 +814,17 @@ def entry_request():
         } for u in proper_users
     ]
 
+    # partnerユーザーリスト
+    partner_users = get_partner_users(db)
+    owner_candidates_map = {}
+    for u in (proper_users + partner_users):
+        owner_candidates_map[u['username']] = {
+            'username': u['username'],
+            'department': u.get('department', ''),
+            'realname': u.get('realname', '')
+        }
+    owner_candidates = list(owner_candidates_map.values())
+
     # POST: 選択ID受取→申請フォーム表示
     if request.method == 'POST' and not request.form.get('action'):
         item_ids = request.form.getlist('selected_ids')
@@ -816,7 +837,6 @@ def entry_request():
         items = [dict(row) for row in items]
         department = g.user['department']
         # manager権限ユーザーリスト取得
-        managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
         # 並べ替え：同部門→他部門
         sorted_managers = (
@@ -834,6 +854,7 @@ def entry_request():
             approver_default=approver_default,
             approver_list=sorted_managers,
             proper_users=proper_users_json,
+            owner_candidates=owner_candidates,
             manager_default=manager_default,
             g=g,
         )
@@ -862,14 +883,12 @@ def entry_request():
         transfer_date = form.get("transfer_date", "") if with_checkout and with_transfer else ""
 
         errors = []
-        # properユーザーかチェック
         if not manager or manager not in proper_usernames:
             errors.append("管理者の入力が不正です。正しい管理者を選択してください。")
         if not approver:
             errors.append("承認者を選択してください。")
         if len(qty_checked) != len(item_ids):
             errors.append("すべての数量チェックをしてください。")
-        # ▼ 新規：譲渡申請ONなら枝番必須
         if with_checkout and with_transfer:
             if not transfer_branch_ids:
                 errors.append("譲渡する枝番を選択してください。")
@@ -882,7 +901,6 @@ def entry_request():
             ).fetchall()
             items = [dict(row) for row in items]
             department = g.user['department']
-            managers_same_dept = get_managers_by_department(department, db)
             all_managers = get_managers_by_department(None, db)
             sorted_managers = (
                 [m for m in all_managers if m['department'] == department] +
@@ -897,6 +915,7 @@ def entry_request():
                 approver_default=approver_default,
                 approver_list=sorted_managers,
                 proper_users=proper_users_json,
+                owner_candidates=owner_candidates,
                 manager_default=manager_default,
                 g=g,
                 error_dialog_message=error_dialog_message,
@@ -1002,6 +1021,17 @@ def checkout_request():
     ]
     manager_default = g.user['username']
 
+    # partner + proper を所有者候補として統合
+    partner_users = get_partner_users(db)
+    tmp_map = {}
+    for u in (proper_users + partner_users):
+        tmp_map[u['username']] = {
+            'username': u['username'],
+            'department': u.get('department', ''),
+            'realname': u.get('realname', '')
+        }
+    owner_candidates = list(tmp_map.values())
+
     # 申請画面表示
     if request.method == 'POST' and not request.form.get('action'):
         item_ids = request.form.getlist('selected_ids')
@@ -1041,7 +1071,6 @@ def checkout_request():
 
         # --- 承認者リスト整形 ---
         department = g.user['department']
-        managers_same_dept = get_managers_by_department(department, db)
         all_managers = get_managers_by_department(None, db)
         # 並べ替え（同部門→それ以外）
         sorted_managers = (
@@ -1056,6 +1085,7 @@ def checkout_request():
             approver_default=approver_default,
             approver_list=sorted_managers,
             proper_users=proper_users_json,
+            owner_candidates=owner_candidates,
             manager_default=manager_default,
             g=g,
         )
@@ -1125,7 +1155,6 @@ def checkout_request():
 
             items = [it for it in items if it['available_count'] > 0]
             department = g.user['department']
-            managers_same_dept = get_managers_by_department(department, db)
             all_managers = get_managers_by_department(None, db)
             sorted_managers = (
                 [m for m in all_managers if m['department'] == department] +
@@ -1139,6 +1168,7 @@ def checkout_request():
                 approver_default=approver_default,
                 approver_list=sorted_managers,
                 proper_users=proper_users_json,
+                owner_candidates=owner_candidates,
                 manager_default=manager_default,
                 g=g,
                 error_dialog_message=error_dialog_message,
@@ -1778,6 +1808,19 @@ def loadjson_filter(s):
 @roles_required('admin', 'manager', 'proper', 'partner')
 def change_owner():
     db = get_db()
+
+    # 候補ユーザー（proper + partner）
+    proper_users = get_proper_users(db)
+    partner_users = get_partner_users(db)
+    tmp = {}
+    for u in (proper_users + partner_users):
+        tmp[u['username']] = {
+            'username': u['username'],
+            'department': u.get('department', ''),
+            'realname': u.get('realname', '')
+        }
+    owner_candidates = list(tmp.values())
+
     ids_str = request.args.get('ids') if request.method == 'GET' else request.form.get('ids')
     if not ids_str:
         flash("通し番号が指定されていません")
@@ -1803,7 +1846,8 @@ def change_owner():
             'change_owner.html',
             items=items,
             child_items=child_items,
-            ids=','.join(str(i) for i in target_ids)
+            ids=','.join(str(i) for i in target_ids),
+            owner_candidates=owner_candidates,
         )
 
     # POST: 変更反映
@@ -1850,6 +1894,15 @@ def change_owner():
 @roles_required('admin', 'manager', 'proper')
 def dispose_transfer_request():
     db = get_db()
+
+    # 対応者（handler）候補：proper のみ
+    proper_users = get_proper_users(db)  # [{'username','department','realname'},...]
+    proper_users_json = [
+        {'username': u['username'], 'department': u.get('department',''), 'realname': u.get('realname','')}
+        for u in proper_users
+    ]
+    handler_default = g.user['username']
+
     # POST: 申請フォーム送信
     if request.method == 'POST' and request.form.get('action') == 'submit':
         item_ids = request.form.getlist('item_id')
@@ -1917,7 +1970,9 @@ def dispose_transfer_request():
                 'dispose_transfer_form.html',
                 items=item_list, child_items=child_items, fields=INDEX_FIELDS,
                 approver_default=approver_default,
-                approver_list=sorted_managers
+                approver_list=sorted_managers,
+                proper_users=proper_users_json,
+                handler_default=handler_default
             )
 
         applicant = g.user['username']
@@ -2024,7 +2079,9 @@ def dispose_transfer_request():
             'dispose_transfer_form.html',
             items=item_list, child_items=child_items, fields=INDEX_FIELDS,
             approver_default=approver_default,
-            approver_list=sorted_managers
+            approver_list=sorted_managers,
+            proper_users=proper_users_json,
+            handler_default=handler_default
         )
 
     return redirect(url_for('index'))

@@ -75,6 +75,17 @@
     }
     .suggest-item:hover, .suggest-item.active { background: #e3f2fd; }
     .relative { position: relative; }
+    /* 所有者ウィジェット */
+    .owner-cell .input-clear-wrap { width: 280px; }
+    .owner-cell .form-input { padding-right: 1.8em; } /* ×の余白 */
+    .owner-cell .clear-btn { top: 50%; transform: translateY(-50%); }
+    .owner-suggest.suggest-list { min-width: 280px; }
+
+    /* 不正表示 */
+    .owner-visible.invalid {
+        border-color: #e53935;
+        background: #ffebee;
+    }
 </style>
 {% endblock %}
 
@@ -196,9 +207,15 @@
     const properUsers = {{ proper_users|tojson|safe }};
     const myUsername = "{{ manager_default|e }}";
     const myUser = properUsers.find(u => u.username === myUsername);
+
+    // ▼ 追加: 所有者候補（proper+partner）
+    const ownerCandidates = {{ owner_candidates|tojson|safe }};
+    const loginOwnerUser = ownerCandidates.find(u => u.username === "{{ g.user['username'] }}");
+
     function formatUser(user) {
-        return (user.department ? user.department : "") + " " + user.realname;
+        return (user.department ? user.department + " " : "") + user.realname;
     }
+
     function showSuggestList(users) {
         const suggest = document.getElementById('manager_suggest');
         suggest.innerHTML = "";
@@ -218,6 +235,7 @@
         });
         suggest.style.display = users.length > 0 ? "block" : "none";
     }
+
     document.addEventListener("DOMContentLoaded", function() {
         // 管理者欄サジェスト初期化
         const input = document.getElementById('manager_input');
@@ -243,7 +261,10 @@
                 clearBtn.style.display = "none";
                 return;
             }
-            const filtered = properUsers.filter(u => u.realname.indexOf(val) !== -1);
+            const filtered = properUsers.filter(u =>
+                (u.realname && u.realname.indexOf(val) !== -1) ||
+                (u.department && u.department.indexOf(val) !== -1)
+            );
             showSuggestList(filtered);
             hidden.value = "";
             clearBtn.style.display = "inline";
@@ -252,9 +273,7 @@
             if (input.value.length > 0) clearBtn.style.display = "inline";
         });
         input.addEventListener('blur', function() {
-            setTimeout(function() {
-                suggest.style.display = "none";
-            }, 150);
+            setTimeout(function() { suggest.style.display = "none"; }, 150);
         });
         clearBtn.addEventListener('click', function(e) {
             e.preventDefault();
@@ -268,15 +287,21 @@
                 suggest.style.display = "none";
             }
         });
+
         // サーババリデーションエラーをalertで
         {% if error_dialog_message %}
-            alert("{{ error_dialog_message|tojson }}");
+            alert({{ error_dialog_message|tojson }});
         {% endif %}
-        // ---- 以降既存（owner/transferテーブル、日付セット等） ----
+
+        // ---- 日付セット ----
         document.getElementById('start_date').value = getToday();
         document.getElementById('end_date').value = getThreeMonthLast();
         document.getElementById('transfer_date').value = getToday();
+
+        // 所有者テーブル生成
         if (typeof createOwnerTables === 'function') createOwnerTables();
+
+        // 譲渡切替
         const cb_transfer = document.getElementById('with_transfer_cb');
         const transferDetailArea = document.getElementById('transfer-detail-area');
         cb_transfer.addEventListener('change', function() {
@@ -311,6 +336,28 @@
             document.getElementById('manager_input').focus();
             return false;
         }
+
+        // ▼ 所有者チェック
+        const ownerHiddens = document.querySelectorAll('input[name^="owner_list_"]');
+        if (ownerHiddens.length === 0) {
+            alert("所有者入力欄生成に失敗しました。ページを更新してください。");
+            return false;
+        }
+        let firstInvalid = null;
+        ownerHiddens.forEach(h => {
+            const cell = h.closest('.owner-cell');
+            const vis = cell ? cell.querySelector('.owner-visible') : null;
+            if (!h.value) {
+                if (vis) vis.classList.add('invalid');
+                if (!firstInvalid) firstInvalid = vis || h;
+            }
+        });
+        if (firstInvalid) {
+            alert("所有者の入力が不正です。候補から選択してください。");
+            if (firstInvalid.focus) firstInvalid.focus();
+            return false;
+        }
+
         var cb_transfer = document.getElementById('with_transfer_cb');
         if (cb_transfer.checked) {
             var checkedBranches = document.querySelectorAll('input[name="transfer_branch_ids"]:checked');
@@ -327,10 +374,93 @@
         return true;
     }
 
+    // ▼ 所有者サジェスト共通関数
+    function renderOwnerSuggest(container, users, onPick) {
+        container.innerHTML = "";
+        users.forEach(user => {
+            const div = document.createElement('div');
+            div.className = "suggest-item";
+            div.textContent = formatUser(user);
+            div.dataset.username = user.username;
+            div.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                onPick(user);
+            });
+            container.appendChild(div);
+        });
+        container.style.display = users.length > 0 ? "block" : "none";
+    }
+    function filterOwner(query) {
+        const q = (query || "").trim();
+        if (!q) return ownerCandidates;
+        return ownerCandidates.filter(u =>
+            (u.realname && u.realname.indexOf(q) !== -1) ||
+            (u.department && u.department.indexOf(q) !== -1) ||
+            (u.username && u.username.indexOf(q) !== -1)
+        );
+    }
+    function resolveOwnerInput(input, hidden) {
+        const val = (input.value || "").trim();
+        if (!val) { hidden.value = ""; return false; }
+        let hit = ownerCandidates.find(u => u.username === val) ||
+                  ownerCandidates.find(u => (u.department ? u.department + " " + u.realname : u.realname) === val);
+        if (hit) {
+            input.value = (hit.department ? hit.department + " " : "") + hit.realname;
+            hidden.value = hit.username;
+            input.classList.remove('invalid');
+            return true;
+        } else {
+            hidden.value = "";
+            return false;
+        }
+    }
+    function wireOwnerInput({inputEl, hiddenEl, clearEl, suggestEl}) {
+        function pickUser(user) {
+            inputEl.value = (user.department ? user.department + " " : "") + user.realname;
+            hiddenEl.value = user.username;
+            suggestEl.style.display = "none";
+            clearEl.style.display = "inline";
+            inputEl.classList.remove('invalid');
+        }
+        resolveOwnerInput(inputEl, hiddenEl);
+        inputEl.addEventListener('focus', () => {
+            renderOwnerSuggest(suggestEl, ownerCandidates, pickUser);
+            if (inputEl.value) clearEl.style.display = "inline";
+        });
+        inputEl.addEventListener('input', () => {
+            const val = inputEl.value.trim();
+            hiddenEl.value = "";
+            inputEl.classList.remove('invalid');
+            if (!val) {
+                suggestEl.style.display = "none";
+                clearEl.style.display = "none";
+                return;
+            }
+            renderOwnerSuggest(suggestEl, filterOwner(val), pickUser);
+            clearEl.style.display = "inline";
+        });
+        inputEl.addEventListener('paste', () => setTimeout(() => resolveOwnerInput(inputEl, hiddenEl), 0));
+        inputEl.addEventListener('change', () => resolveOwnerInput(inputEl, hiddenEl));
+        inputEl.addEventListener('blur', () => {
+            setTimeout(()=>{ suggestEl.style.display="none"; }, 150);
+            const txt = (inputEl.value || "").trim();
+            if (txt && !hiddenEl.value) inputEl.classList.add('invalid');
+        });
+        clearEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            inputEl.value = "";
+            hiddenEl.value = "";
+            clearEl.style.display = "none";
+            suggestEl.style.display = "none";
+            inputEl.classList.remove('invalid');
+            inputEl.focus();
+        });
+    }
+
     function createOwnerTables() {
-        let area = document.getElementById('owner-tables-area');
+        const area = document.getElementById('owner-tables-area');
         area.innerHTML = '';
-        let items = [];
+        const items = [];
         {% for item in items %}
             items.push({
                 id: "{{ item['id'] }}",
@@ -338,36 +468,50 @@
                 branches: {{ item['available_branches']|tojson|safe }}
             });
         {% endfor %}
-        let username = "{{ g.user['username'] }}";
-        let allHtml = `<b>所有者</b>`;
-        for (let it of items) {
+        const defUser = loginOwnerUser || null;
+        let htmlAll = `<b>所有者</b>`;
+        for (const it of items) {
             let t = `<div style="margin-top:12px; margin-bottom:20px;"><b>ID ${it.id}（${it.product_name}）</b><br>
                 <table style="border-collapse:collapse;">
                 <tr>
                     <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
                     <th style="border:1px solid #aaa;padding:5px 10px;">所有者</th>
                 </tr>`;
-            for (let b of it.branches) {
+            for (const b of it.branches) {
+                const inputId = `owner_input_${it.id}_${b}`;
+                const hiddenId = `owner_hidden_${it.id}_${b}`;
+                const clearId  = `owner_clear_${it.id}_${b}`;
+                const suggestId= `owner_suggest_${it.id}_${b}`;
+                const disp = defUser ? formatUser(defUser) : "";
+                const hid  = defUser ? defUser.username : "";
                 t += `<tr>
-                <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
-                <td style="border:1px solid #aaa;padding:5px 10px;" contenteditable="true">
-                    <input type="hidden" name="owner_list_${it.id}" value="${username}">
-                    ${username}
-                </td>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
+                    <td class="owner-cell" style="border:1px solid #aaa;padding:5px 10px;position:relative;">
+                        <div class="input-clear-wrap">
+                            <input type="text" class="form-input owner-visible"
+                                   id="${inputId}" autocomplete="off" placeholder="部署名 氏名" value="${disp}">
+                            <span id="${clearId}" class="clear-btn owner-clear" title="クリア" style="${disp ? 'display:inline' : 'display:none'}">&#10005;</span>
+                        </div>
+                        <input type="hidden" name="owner_list_${it.id}" id="${hiddenId}" value="${hid}">
+                        <div id="${suggestId}" class="suggest-list owner-suggest"></div>
+                    </td>
                 </tr>`;
             }
             t += `</table></div>`;
-            allHtml += t;
+            htmlAll += t;
         }
-        area.innerHTML = allHtml;
+        area.innerHTML = htmlAll;
         area.style.display = "block";
-        let tds = area.querySelectorAll('td[contenteditable="true"]');
-        tds.forEach(td => {
-            td.addEventListener('input', function() {
-                let input = td.querySelector('input[type="hidden"]');
-                input.value = td.innerText.trim();
-            });
-        });
+        for (const it of items) {
+            for (const b of it.branches) {
+                wireOwnerInput({
+                    inputEl:   document.getElementById(`owner_input_${it.id}_${b}`),
+                    hiddenEl:  document.getElementById(`owner_hidden_${it.id}_${b}`),
+                    clearEl:   document.getElementById(`owner_clear_${it.id}_${b}`),
+                    suggestEl: document.getElementById(`owner_suggest_${it.id}_${b}`),
+                });
+            }
+        }
     }
 
     function createTransferBranchTables() {
@@ -391,10 +535,10 @@
                 </tr>`;
             for (let b of it.branches) {
                 t += `<tr>
-                <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">
-                    <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${b}">
-                </td>
-                <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">
+                        <input type="checkbox" name="transfer_branch_ids" value="${it.id}_${b}">
+                    </td>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${b}</td>
                 </tr>`;
             }
             t += `</table></div>`;

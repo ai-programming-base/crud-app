@@ -79,6 +79,16 @@
         color: #888;
         background: none;
     }
+    /* 所有者セルのレイアウト */
+    .owner-cell .input-clear-wrap { width: 280px; }
+    .owner-cell .form-input { padding-right: 1.8em; } /* ×ボタンの余白 */
+    .owner-cell .clear-btn { top: 50%; transform: translateY(-50%); }
+    /* 所有者サジェスト */
+    .owner-suggest.suggest-list { min-width: 280px; }
+    .owner-visible.invalid {
+        border-color: #e53935;
+        background: #ffebee;
+    }
 </style>
 {% endblock %}
 
@@ -210,17 +220,107 @@
 {% endif %}
 <script>
     {% if error_dialog_message %}
-        alert("{{ error_dialog_message|tojson }}");
+        alert({{ error_dialog_message|tojson }});
     {% endif %}
-    // properユーザーサジェスト
-    const properUsers = {{ proper_users|tojson|safe }};
+
+    // --- データ供給 ---
+    const properUsers = {{ proper_users|tojson|safe }};   // 既存（管理者サジェスト用）
+    const ownerCandidates = {{ owner_candidates|tojson|safe }}; // ▼ 追加（所有者サジェスト用）
     const myUsername = "{{ manager_default|e }}";
-    const myUser = properUsers.find(u => u.username === myUsername);
+    const myUserForManager = properUsers.find(u => u.username === myUsername);
+    // 所有者欄の初期値はログインユーザー（proper/partner問わず）を候補から検索
+    const myUserForOwner = ownerCandidates.find(u => u.username === "{{ g.user['username'] }}");
 
     function formatUser(user) {
         return (user.department ? user.department : "") + " " + user.realname;
     }
 
+    // ▼ 共通：サジェストの描画（与えられたcontainerに出す）
+    function renderSuggestList(container, users, onPick) {
+        container.innerHTML = "";
+        users.forEach(user => {
+            const div = document.createElement('div');
+            div.className = "suggest-item";
+            div.textContent = formatUser(user);
+            div.dataset.username = user.username;
+            div.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                onPick(user);
+            });
+            container.appendChild(div);
+        });
+        container.style.display = users.length > 0 ? "block" : "none";
+    }
+
+    // ▼ 所有者入力ウィジェットの紐付け
+    function wireOwnerInput(ids) {
+        const {inputEl, hiddenEl, clearEl, suggestEl} = ids;
+
+        function pickUser(user) {
+            inputEl.value = formatUser(user);
+            hiddenEl.value = user.username;
+            suggestEl.style.display = "none";
+            clearEl.style.display = "inline";
+            inputEl.classList.remove('invalid');
+        }
+
+        function openFullList() {
+            renderSuggestList(suggestEl, ownerCandidates, pickUser);
+        }
+
+        function filterAndShow() {
+            const val = inputEl.value.trim();
+            if (val.length === 0) {
+                hiddenEl.value = "";
+                suggestEl.style.display = "none";
+                clearEl.style.display = "none";
+                return;
+            }
+            // 部分一致（部署名 or 氏名）
+            const filtered = ownerCandidates.filter(u =>
+                (u.department && u.department.indexOf(val) !== -1) ||
+                (u.realname && u.realname.indexOf(val) !== -1)
+            );
+            renderSuggestList(suggestEl, filtered, pickUser);
+            hiddenEl.value = ""; // 未確定
+            clearEl.style.display = "inline";
+        }
+
+        function tryResolveExact() {
+            const txt = inputEl.value.trim();
+            // 完全一致（"部署 氏名"）
+            const exact = ownerCandidates.find(u => formatUser(u) === txt);
+            hiddenEl.value = exact ? exact.username : "";
+        }
+
+        inputEl.addEventListener('focus', openFullList);
+        inputEl.addEventListener('input', filterAndShow);
+        inputEl.addEventListener('blur', () => {
+            setTimeout(() => { suggestEl.style.display = "none"; }, 150);
+            const txt = (inputEl.value || "").trim();
+            // テキストがあるのに hidden が未確定 → 不正
+            if (txt.length > 0 && !hiddenEl.value) {
+                inputEl.classList.add('invalid');
+            } else {
+                inputEl.classList.remove('invalid');
+            }
+        });
+        inputEl.addEventListener('paste', () => {
+            // ペースト内容の確定は input イベントに乗るのでここでは何もしない
+            setTimeout(tryResolveExact, 0);
+        });
+        inputEl.addEventListener('change', tryResolveExact);
+
+        clearEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            inputEl.value = "";
+            hiddenEl.value = "";
+            clearEl.style.display = "none";
+            suggestEl.style.display = "none";
+        });
+    }
+
+    // --- 管理者欄（既存ロジック） ---
     function showSuggestList(users) {
         const suggest = document.getElementById('manager_suggest');
         suggest.innerHTML = "";
@@ -238,36 +338,27 @@
             });
             suggest.appendChild(div);
         });
-        if (users.length > 0) {
-            suggest.style.display = "block";
-        } else {
-            suggest.style.display = "none";
-        }
+        suggest.style.display = users.length > 0 ? "block" : "none";
     }
 
     document.addEventListener("DOMContentLoaded", function() {
-        // 管理者欄サジェスト初期化
+        // --- 管理者欄 初期化（既存維持） ---
         const input = document.getElementById('manager_input');
         const hidden = document.getElementById('manager');
         const suggest = document.getElementById('manager_suggest');
         const clearBtn = document.getElementById('manager_clear');
 
-        // デフォルト：自分
-        if (myUser) {
-            input.value = formatUser(myUser);
-            hidden.value = myUser.username;
+        if (myUserForManager) {
+            input.value = formatUser(myUserForManager);
+            hidden.value = myUserForManager.username;
             clearBtn.style.display = "inline";
         } else {
             input.value = "";
             hidden.value = "";
             clearBtn.style.display = "none";
         }
-
-        input.addEventListener('focus', function() {
-            // 候補リスト表示
-            showSuggestList(properUsers);
-        });
-        input.addEventListener('input', function(e) {
+        input.addEventListener('focus', function(){ showSuggestList(properUsers); });
+        input.addEventListener('input', function(){
             const val = input.value;
             if (val.length === 0) {
                 input.value = "";
@@ -276,48 +367,32 @@
                 clearBtn.style.display = "none";
                 return;
             }
-            // 入力が1文字以上: realnameで部分一致
             const filtered = properUsers.filter(
-                u => u.realname.indexOf(val) !== -1
+                u => (u.realname && u.realname.indexOf(val) !== -1) || (u.department && u.department.indexOf(val) !== -1)
             );
             showSuggestList(filtered);
             hidden.value = "";
             clearBtn.style.display = "inline";
         });
-
-        // クリアボタン表示制御
-        input.addEventListener('focus', function() {
-            if (input.value.length > 0) {
-                clearBtn.style.display = "inline";
-            }
-        });
-        input.addEventListener('blur', function() {
-            setTimeout(function() {
-                suggest.style.display = "none";
-            }, 150); // サジェスト選択時のため
-        });
-
-        clearBtn.addEventListener('click', function(e) {
+        input.addEventListener('focus', function(){ if (input.value.length > 0) clearBtn.style.display="inline"; });
+        input.addEventListener('blur', function(){ setTimeout(function(){ suggest.style.display="none"; }, 150); });
+        clearBtn.addEventListener('click', function(e){
             e.preventDefault();
             input.value = "";
             hidden.value = "";
             clearBtn.style.display = "none";
             suggest.style.display = "none";
         });
-
-        // outsideクリックで閉じる
-        document.addEventListener('mousedown', function(e) {
+        document.addEventListener('mousedown', function(e){
             if (!input.contains(e.target) && !suggest.contains(e.target) && e.target !== clearBtn) {
                 suggest.style.display = "none";
             }
         });
 
-        // --- 元々のスクリプト（持ち出し/譲渡/日付等） ---
         document.getElementById('start_date').value = getToday();
         document.getElementById('end_date').value = getThreeMonthLast();
         document.getElementById('transfer_date').value = getToday();
 
-        // 要素取得
         const cb_checkout = document.getElementById('with_checkout_cb');
         const area_checkout = document.getElementById('checkout-area');
         const area_transfer = document.getElementById('with_transfer_area');
@@ -326,17 +401,13 @@
         const ownerTablesArea = document.getElementById('owner-tables-area');
 
         function toggleCheckoutArea() {
-            // 持ち出し申請欄表示
             area_checkout.style.display = cb_checkout.checked ? "block" : "none";
-            // 譲渡申請親欄表示
             area_transfer.style.display = cb_checkout.checked ? "block" : "none";
-            // 所有者テーブル生成・消去
             if (cb_checkout.checked) {
                 if (typeof createOwnerTables === 'function') createOwnerTables();
             } else {
                 ownerTablesArea.innerHTML = '';
             }
-            // 持ち出しOFFのとき譲渡関連もOFF
             if (!cb_checkout.checked) {
                 cb_transfer.checked = false;
                 transferDetailArea.style.display = "none";
@@ -351,16 +422,12 @@
             }
         }
 
-        // イベントセット
         cb_checkout.addEventListener('change', toggleCheckoutArea);
         cb_transfer.addEventListener('change', toggleTransferDetail);
-
-        // 初期化
         toggleCheckoutArea();
         toggleTransferDetail();
     });
 
-    // 日付セット
     function getToday() {
         const d = new Date();
         return d.toISOString().slice(0, 10);
@@ -371,28 +438,44 @@
         const m = now.getMonth();
         const after3 = new Date(y, m + 3, 1);
         const lastDay = new Date(after3.getFullYear(), after3.getMonth(), 0);
-        // 日本のローカル表記にする
-        return lastDay.toLocaleDateString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit'})
-                    .replace(/\//g, '-');
+        return lastDay.toLocaleDateString('ja-JP', {year: 'numeric', month: '2-digit', day: '2-digit'}).replace(/\//g, '-');
     }
 
-    // 申請時チェック
     function checkAndSubmit() {
-        var allChecked = true;
         var checks = document.querySelectorAll('input[name="qty_checked"]:not(:checked)');
         if (checks.length > 0) {
             alert("全ての数量チェックにチェックしてください");
             return false;
         }
-        // 管理者未選択チェック
         var manager = document.getElementById('manager').value;
         if (!manager) {
             alert("管理者の入力が不正です。正しい管理者を選択してください");
             document.getElementById('manager_input').focus();
             return false;
         }
-        // 持ち出し＋譲渡同時申請時のバリデーション
         var cb_checkout = document.getElementById('with_checkout_cb');
+        if (cb_checkout.checked) {
+            const ownerHiddens = document.querySelectorAll('input[name^="owner_list_"]');
+            if (ownerHiddens.length === 0) {
+                alert("所有者の入力欄生成に失敗しました。ページを更新してやり直してください。");
+                return false;
+            }
+            let firstInvalid = null;
+            ownerHiddens.forEach(h => {
+                const cell = h.closest('.owner-cell');
+                const vis = cell ? cell.querySelector('.owner-visible') : null;
+                // hidden（実値）が空＝不正
+                if (!h.value) {
+                    if (vis) vis.classList.add('invalid');
+                    if (!firstInvalid) firstInvalid = vis || h;
+                }
+            });
+            if (firstInvalid) {
+                alert("所有者の入力が不正です。候補から選択してください。");
+                if (firstInvalid.focus) firstInvalid.focus();
+                return false; // ← 送信を停止
+            }
+        }
         var cb_transfer = document.getElementById('with_transfer_cb');
         if (cb_checkout.checked && cb_transfer.checked) {
             var checkedBranches = document.querySelectorAll('input[name="transfer_branch_ids"]:checked');
@@ -409,16 +492,16 @@
         return true;
     }
 
-    // 所有者テーブル生成（持ち出し申請ON時のみ呼ばれる）
     function createOwnerTables() {
-        let checked = document.getElementById('with_checkout_cb').checked;
-        let area = document.getElementById('owner-tables-area');
+        const area = document.getElementById('owner-tables-area');
         area.innerHTML = '';
-        if (!checked) {
+        if (!document.getElementById('with_checkout_cb').checked) {
             area.style.display = "none";
             return;
         }
-        let items = [];
+        area.style.display = "block";
+
+        const items = [];
         {% for item in items %}
             items.push({
                 id: "{{ item['id'] }}",
@@ -426,42 +509,62 @@
                 product_name: "{{ item['product_name']|default('')|e }}"
             });
         {% endfor %}
-        let username = "{{ g.user['username'] }}";
-        let allHtml = `<b>所有者</b>`;
-        for (let it of items) {
+
+        const me = "{{ g.user['username'] }}";
+        const myUser = ownerCandidates.find(u => u.username === me);
+
+        let htmlAll = `<b>所有者</b>`;
+        for (const it of items) {
+            const n = (it.num_of_samples && it.num_of_samples > 0) ? it.num_of_samples : 1;
             let t = `<div style="margin-top:12px; margin-bottom:20px;"><b>ID ${it.id}（${it.product_name}）</b><br>
                 <table style="border-collapse:collapse;">
-                <tr>
+                  <tr>
                     <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
                     <th style="border:1px solid #aaa;padding:5px 10px;">所有者</th>
-                </tr>`;
-            let n = it.num_of_samples;
-            if (!n || n<=0) n = 1;
+                  </tr>`;
             for (let i=1; i<=n; i++) {
-                t += `<tr>
-                <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${i}</td>
-                <td style="border:1px solid #aaa;padding:5px 10px;" contenteditable="true">
-                    <input type="hidden" name="owner_list_${it.id}" value="${username}">
-                    ${username}
-                </td>
-                </tr>`;
+                const inputId = `owner_input_${it.id}_${i}`;
+                const hiddenId = `owner_hidden_${it.id}_${i}`;
+                const clearId = `owner_clear_${it.id}_${i}`;
+                const suggestId = `owner_suggest_${it.id}_${i}`;
+                const defaultVisible = myUser ? formatUser(myUser) : "";
+                const defaultHidden = myUser ? myUser.username : "";
+
+                // hidden の name は従来通り owner_list_{itemId}（同名複数でサーバ側で配列化）
+                t += `
+                  <tr>
+                    <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">${i}</td>
+                    <td class="owner-cell" style="border:1px solid #aaa;padding:5px 10px;position:relative;">
+                        <div class="input-clear-wrap">
+                            <input type="text" class="form-input owner-visible"
+                                   id="${inputId}" autocomplete="off"
+                                   placeholder="部署名 氏名"
+                                   value="${defaultVisible}">
+                            <span id="${clearId}" class="clear-btn owner-clear" title="クリア" style="${defaultVisible ? 'display:inline' : 'display:none'}">&#10005;</span>
+                        </div>
+                        <input type="hidden" name="owner_list_${it.id}" id="${hiddenId}" value="${defaultHidden}">
+                        <div id="${suggestId}" class="suggest-list owner-suggest"></div>
+                    </td>
+                  </tr>`;
             }
             t += `</table></div>`;
-            allHtml += t;
+            htmlAll += t;
         }
-        area.innerHTML = allHtml;
-        area.style.display = "block";
-        // 編集内容をhidden inputに反映
-        let tds = area.querySelectorAll('td[contenteditable="true"]');
-        tds.forEach(td => {
-            td.addEventListener('input', function() {
-                let input = td.querySelector('input[type="hidden"]');
-                input.value = td.innerText.trim();
-            });
-        });
-    }
+        area.innerHTML = htmlAll;
 
-    // 譲渡対象枝番テーブル生成（持ち出し＋譲渡申請ON時のみ呼ばれる）
+        // 各セルを配線
+        for (const it of items) {
+            const n = (it.num_of_samples && it.num_of_samples > 0) ? it.num_of_samples : 1;
+            for (let i=1; i<=n; i++) {
+                wireOwnerInput({
+                    inputEl: document.getElementById(`owner_input_${it.id}_${i}`),
+                    hiddenEl: document.getElementById(`owner_hidden_${it.id}_${i}`),
+                    clearEl: document.getElementById(`owner_clear_${it.id}_${i}`),
+                    suggestEl: document.getElementById(`owner_suggest_${it.id}_${i}`),
+                });
+            }
+        }
+    }
     function createTransferBranchTables() {
         let area = document.getElementById('transfer-branch-tables');
         area.innerHTML = '';
@@ -473,18 +576,15 @@
                 product_name: "{{ item['product_name']|default('')|e }}"
             });
         {% endfor %}
-
-        // 各アイテムごとに枝番選択テーブルを出す
         let allHtml = "";
         for (let it of items) {
+            let n = it.num_of_samples; if (!n || n <= 0) n = 1;
             let t = `<div style="margin-bottom:18px;"><b>ID ${it.id}（${it.product_name}） 譲渡する枝番を選択</b>
                 <table style="border-collapse:collapse;">
                 <tr>
                     <th style="border:1px solid #aaa;padding:5px 10px;">選択</th>
                     <th style="border:1px solid #aaa;padding:5px 10px;">枝番</th>
                 </tr>`;
-            let n = it.num_of_samples;
-            if (!n || n <= 0) n = 1;
             for (let i = 1; i <= n; i++) {
                 t += `<tr>
                 <td style="border:1px solid #aaa;padding:5px 10px;text-align:center;">

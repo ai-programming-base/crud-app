@@ -1,4 +1,3 @@
-{# templates/owner_change.html #}
 {% extends "_base.html" %}
 
 {% block title %}所有者変更{% endblock %}
@@ -8,54 +7,194 @@
     table { border-collapse: collapse; width: 98%; }
     th, td { border: 1px solid #aaa; padding: 6px 12px; }
     th { background: #eee; }
-    td.editing { background: #d0e3f7; }
     .button-group { margin-top: 16px; }
     .main-btn { background: #4285f4; color: #fff; border: none; border-radius: 4px; font-size: 1rem; font-weight: bold; padding: 6px 16px; margin-right: 8px; cursor: pointer; text-decoration: none;}
+
+    /* ▼ 入庫申請の見た目に合わせる */
+    .input-clear-wrap {
+        position: relative;
+        display: inline-block;
+        width: 320px;            /* 同じ幅 */
+        vertical-align: middle;
+    }
+    .form-input {
+        width: 100%;
+        box-sizing: border-box;
+        font-size: 1rem;
+        padding: 5px;
+        border-radius: 4px;
+        border: 1px solid #bbb;
+    }
+    .clear-btn {
+        position: absolute;
+        right: 6px;
+        top: 55%;                /* 位置を合わせる */
+        transform: translateY(-40%);
+        cursor: pointer;
+        font-size: 1.03em;
+        color: #bbb;
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        line-height: 1;
+        display: none;
+        z-index: 10;
+        width: 1.3em;
+        height: 1.3em;
+        text-align: center;
+        transition: color 0.13s;
+        user-select: none;
+    }
+    .clear-btn:hover { color: #888; background: none; }
+    .suggest-list {
+        position: absolute; background: #fff; border: 1px solid #bbb; border-radius: 6px;
+        box-shadow: 0 2px 8px #bbb8; z-index: 100; min-width: 320px; max-height: 180px; overflow-y: auto;
+        display: none;
+    }
+    .suggest-item { padding: 6px 16px; cursor: pointer; }
+    .suggest-item:hover, .suggest-item.active { background: #e3f2fd; }
+
+    /* エラーハイライト */
+    .owner-visible.invalid { border-color: #e53935; background: #ffebee; }
+
+    /* 入力不可セル */
+    td.owner-cell-disabled { color: #777; background: #f7f7f7; }
 </style>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // Excel風セル編集
-        const cells = Array.from(document.querySelectorAll('td[data-editable="true"]'));
-        cells.forEach((td, idx) => {
-            td.addEventListener('click', function(e) {
-                if (td.classList.contains('editing')) return;
-                td.classList.add('editing');
-                let oldValue = td.innerText;
-                td.contentEditable = true;
-                td.focus();
+    // ▼ 候補ユーザー（proper+partner）をテンプレから受け取る
+    const ownerCandidates = {{ owner_candidates|tojson|safe }};
 
-                function finishEdit() {
-                    td.classList.remove('editing');
-                    td.contentEditable = false;
-                    td.removeEventListener('blur', finishEdit);
-                    td.removeEventListener('keydown', keyHandler);
-                    let hidden = td.querySelector('input[type="hidden"]');
-                    if (hidden) hidden.value = td.innerText.trim();
-                }
-                function keyHandler(e) {
-                    // EnterやTabで次セル、Shift+Tab/Shift+Enterで前セル
-                    if (e.key === 'Enter' || e.key === 'Tab') {
-                        e.preventDefault();
-                        td.blur(); // 値確定
-                        let nextIdx = idx + (e.shiftKey ? -1 : 1);
-                        if (nextIdx >= 0 && nextIdx < cells.length) {
-                            setTimeout(() => {
-                                cells[nextIdx].click();
-                            }, 1);
-                        }
-                    } else if (e.key === 'Escape') {
-                        td.innerText = oldValue;
-                        td.blur();
-                    }
-                }
-                td.addEventListener('blur', finishEdit);
-                td.addEventListener('keydown', keyHandler);
+    function formatUser(u) {
+        return (u.department ? u.department + " " : "") + u.realname;
+    }
+
+    // サジェスト描画
+    function renderOwnerSuggest(container, users, onPick) {
+        container.innerHTML = "";
+        users.forEach(user => {
+            const div = document.createElement('div');
+            div.className = "suggest-item";
+            div.textContent = formatUser(user);
+            div.dataset.username = user.username;
+            div.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                onPick(user);
             });
+            container.appendChild(div);
+        });
+        container.style.display = users.length > 0 ? "block" : "none";
+    }
+
+    // フィルタ（部署・氏名・username 部分一致）
+    function filterOwner(q) {
+        const v = (q || "").trim();
+        if (!v) return ownerCandidates;
+        return ownerCandidates.filter(u =>
+            (u.realname && u.realname.indexOf(v) !== -1) ||
+            (u.department && u.department.indexOf(v) !== -1) ||
+            (u.username && u.username.indexOf(v) !== -1)
+        );
+    }
+
+    // 表示テキスト or username から hidden を解決
+    function resolveOwnerInput(input, hidden) {
+        const val = (input.value || "").trim();
+        if (!val) { hidden.value = ""; return false; }
+        let hit = ownerCandidates.find(u => u.username === val)
+               || ownerCandidates.find(u => formatUser(u) === val)
+               || ownerCandidates.find(u => u.realname === val);
+        if (hit) {
+            input.value = formatUser(hit);   // 表示は「部署 氏名」
+            hidden.value = hit.username;     // 実値は username
+            input.classList.remove('invalid');
+            return true;
+        } else {
+            hidden.value = "";
+            return false;
+        }
+    }
+
+    // 1セル分の配線（編集可能な行のみ）
+    function wireOwnerInput({inputEl, hiddenEl, clearEl, suggestEl}) {
+        function pickUser(user) {
+            inputEl.value = formatUser(user);
+            hiddenEl.value = user.username;
+            suggestEl.style.display = "none";
+            clearEl.style.display = "inline";
+            inputEl.classList.remove('invalid');
+        }
+
+        // 初期表示：hidden(username) から表示文字列へ解決
+        if (hiddenEl.value) {
+            const hit = ownerCandidates.find(u => u.username === hiddenEl.value);
+            if (hit) inputEl.value = formatUser(hit);
+            if (inputEl.value) clearEl.style.display = "inline";
+        }
+
+        inputEl.addEventListener('focus', () => {
+            renderOwnerSuggest(suggestEl, ownerCandidates, pickUser);
+            if (inputEl.value) clearEl.style.display = "inline";
+        });
+        inputEl.addEventListener('input', () => {
+            const val = inputEl.value.trim();
+            hiddenEl.value = ""; // 入力中は未確定
+            inputEl.classList.remove('invalid');
+            if (!val) {
+                suggestEl.style.display = "none";
+                clearEl.style.display = "none";
+                return;
+            }
+            renderOwnerSuggest(suggestEl, filterOwner(val), pickUser);
+            clearEl.style.display = "inline";
+        });
+        inputEl.addEventListener('paste', () => setTimeout(() => resolveOwnerInput(inputEl, hiddenEl), 0));
+        inputEl.addEventListener('change', () => resolveOwnerInput(inputEl, hiddenEl));
+        inputEl.addEventListener('blur', () => {
+            setTimeout(()=>{ suggestEl.style.display="none"; }, 150);
+            const txt = (inputEl.value || "").trim();
+            if (txt && !hiddenEl.value) inputEl.classList.add('invalid');
         });
 
-        // フォームsubmit時、全セル編集終了（blur）
-        document.querySelector('form').addEventListener('submit', function() {
-            cells.forEach(td => { if (td.isContentEditable) td.blur(); });
+        clearEl.addEventListener('click', (e) => {
+            e.preventDefault();
+            inputEl.value = "";
+            hiddenEl.value = "";
+            clearEl.style.display = "none";
+            suggestEl.style.display = "none";
+            inputEl.classList.remove('invalid');
+            inputEl.focus();
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        // 編集可能セルにのみ配線
+        const editableCells = document.querySelectorAll('td.owner-cell'); // 非表示条件のセルにはこのクラスを付けない
+        editableCells.forEach(cell => {
+            const inputEl   = cell.querySelector('.owner-visible');
+            const hiddenEl  = cell.querySelector('input[type="hidden"]');
+            const clearEl   = cell.querySelector('.clear-btn');
+            const suggestEl = cell.querySelector('.suggest-list');
+            wireOwnerInput({inputEl, hiddenEl, clearEl, suggestEl});
+        });
+
+        // 送信前チェック：編集可能セルに限って hidden を検証
+        const form = document.querySelector('form');
+        form.addEventListener('submit', function(e) {
+            let firstInvalid = null;
+            const hiddens = form.querySelectorAll('td.owner-cell input[name^="owner_"]');
+            hiddens.forEach(h => {
+                const vis = h.closest('.owner-cell')?.querySelector('.owner-visible');
+                if (!h.value) {
+                    if (vis) vis.classList.add('invalid');
+                    if (!firstInvalid) firstInvalid = vis || h;
+                }
+            });
+            if (firstInvalid) {
+                e.preventDefault();
+                alert("所有者の入力が不正です。候補から選択してください。");
+                if (firstInvalid.focus) firstInvalid.focus();
+            }
         });
     });
 </script>
@@ -84,11 +223,25 @@
               {% endfor %}
             </td>
             <td>{{ ci.branch_no }}</td>
-            <td>{{ ci.owner }}</td>
-            <td data-editable="true">
-                <input type="hidden" name="owner_{{ ci.item_id }}_{{ ci.branch_no }}" value="{{ ci.owner }}">
-                {{ ci.owner }}
+            <td>{{ ci.owner or '' }}</td>
+
+            {# ▼ 現在の所有者が空欄なら入力不可＆チェック対象外 #}
+            {% if not ci.owner %}
+            <td class="owner-cell-disabled">—</td>
+            {% else %}
+            <td class="owner-cell">
+                <div class="input-clear-wrap">
+                    <input type="text" class="form-input owner-visible"
+                           id="owner_input_{{ ci.item_id }}_{{ ci.branch_no }}"
+                           autocomplete="off" placeholder="部署名 氏名"
+                           value="">
+                    <span id="owner_clear_{{ ci.item_id }}_{{ ci.branch_no }}" class="clear-btn" title="クリア">&#10005;</span>
+                </div>
+                <input type="hidden" name="owner_{{ ci.item_id }}_{{ ci.branch_no }}"
+                       id="owner_hidden_{{ ci.item_id }}_{{ ci.branch_no }}" value="{{ ci.owner }}">
+                <div id="owner_suggest_{{ ci.item_id }}_{{ ci.branch_no }}" class="suggest-list"></div>
             </td>
+            {% endif %}
         </tr>
         {% endfor %}
     </table>
