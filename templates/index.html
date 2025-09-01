@@ -5,7 +5,7 @@
 {% block head %}
 <style>
     table { border-collapse: collapse; width: 98%; table-layout: fixed; }
-    th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
+    th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; word-break: break-all; overflow-wrap: anywhere;}
     th { background: #eee; }
     th.col-checkbox, td.col-checkbox {
         width: 36px; min-width: 36px; max-width: 38px; text-align: center;
@@ -605,13 +605,17 @@ document.addEventListener('DOMContentLoaded', function () {
         <input type="hidden" name="item_id" value="{{ item['id'] }}">
         {% if locked %}
           <span class="lock-icon"
-                title="編集中({{ item['locked_by'] }})"
-                aria-label="編集中({{ item['locked_by'] }})">🔒</span>
+                title="編集中({{ user_display.get(item['locked_by'], item['locked_by']) }})"
+                aria-label="編集中({{ user_display.get(item['locked_by'], item['locked_by']) }})">🔒</span>
         {% endif %}
       </td>
       <td class="col-id">{{ item['id'] }}</td>
       {% for f in fields %}
-        <td>{{ item[f.key] }}</td>
+        {% if f.key == 'sample_manager' %}
+          <td>{{ user_display.get(item[f.key], item[f.key]) }}</td>
+        {% else %}
+          <td>{{ item[f.key] }}</td>
+        {% endif %}
       {% endfor %}
       <td>{{ item['sample_count'] }}</td>
     </tr>

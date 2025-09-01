@@ -49,6 +49,8 @@ USER_FIELDS = [f for f in FIELDS if not f.get('internal')]
 INDEX_FIELDS = [f for f in FIELDS if f.get('show_in_index')]
 FIELD_KEYS = [f['key'] for f in FIELDS]
 
+logger.debug(FIELDS)
+
 SELECT_FIELD_PATH = os.path.join(os.path.dirname(__file__), 'select_fields.json')
 
 LOCK_TTL_MIN = 30  # ロック有効期限（分）
@@ -346,7 +348,7 @@ def get_partner_users(db):
 
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
-@roles_required('admin', 'manager')
+@roles_required('admin')
 def register():
     db = get_db()
     roles = db.execute("SELECT id, name FROM roles").fetchall()
@@ -583,6 +585,17 @@ def index():
     db = get_db()
     _cleanup_expired_locks(db)
 
+    user_rows = db.execute(
+        """
+        SELECT username,
+               COALESCE(NULLIF(realname, ''), username) AS display_name
+        FROM users
+        """
+    ).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
+    logger.debug(user_display)
+
     # ===== フィルタ構築 =====
     filters = {}
     where = []
@@ -711,6 +724,7 @@ def index():
         fields=INDEX_FIELDS,
         filter_choices_dict=filter_choices_dict,
         per_page=per_page_raw,
+        user_display=user_display,
     )
 
 
