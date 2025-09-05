@@ -1693,6 +1693,31 @@ def child_items_multiple():
     items = [dict(r) for r in items_rows]
     item_map = {r['id']: dict(r) for r in items_rows}
 
+    # ===== サンプル数を動的算出（破棄・譲渡を除外） =====
+    # 一括集計で child_total と alive_cnt を取得
+    agg_sql = f"""
+        SELECT
+            item_id,
+            COUNT(*) AS child_total,
+            SUM(CASE WHEN status NOT IN (?, ?) THEN 1 ELSE 0 END) AS alive_cnt
+        FROM child_item
+        WHERE item_id IN ({','.join(['?']*len(id_list))})
+        GROUP BY item_id
+    """
+    agg_params = ("破棄", "譲渡", *id_list)
+    agg_rows = db.execute(agg_sql, agg_params).fetchall()
+    agg_map = {row["item_id"]: {"child_total": row["child_total"], "alive_cnt": row["alive_cnt"]} for row in agg_rows}
+
+    # 各親アイテムに sample_count を付与
+    for it in items:
+        it_id = it["id"]
+        stats = agg_map.get(it_id)
+        if not stats or stats["child_total"] == 0:
+            # 子が無い場合は num_of_samples をそのまま利用（index と同じフォールバック）
+            it["sample_count"] = it.get("num_of_samples", 0)
+        else:
+            it["sample_count"] = stats["alive_cnt"] or 0
+
     # ▼ 持ち出し申請履歴：checkout_history をそのまま表示用に整形
     hist_rows = db.execute(
         f"""
