@@ -36,10 +36,11 @@
         {% endwith %}
 
         <div class="form-group">
-            <label for="username">ユーザー名</label>
-            <input type="text" id="username" name="username" value="{{ user['username'] }}" required>
+            <label for="username">ユーザー名</label><br>
+            {{ user['username'] }}
         </div>
 
+        {% if 'admin' in g.user_roles %}
         <div class="form-group">
             <label for="password">パスワード（変更時のみ入力）</label>
             <input type="password" id="password" name="password" placeholder="未入力なら変更しません">
@@ -60,6 +61,7 @@
             <label for="realname">氏名</label>
             <input type="text" name="realname" id="realname" value="{{ user['realname'] or '' }}">
         </div>
+        {% endif %}
 
         <div class="roles-group">
             <span style="font-weight:bold;color:#444;">ロールを選択（複数可）</span><br>

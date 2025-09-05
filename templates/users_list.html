@@ -48,7 +48,9 @@
         {% endif %}
       </form>
       <div style="flex:1"></div>
-      <a class="link-btn" href="{{ url_for('register') }}">＋ 新規登録</a>
+      {% if 'admin' in g.user_roles %}
+        <a class="link-btn" href="{{ url_for('register') }}">＋ 新規登録</a>
+      {% endif %}
       <a class="link-btn btn-gray" href="{{ url_for('index') }}">一覧へ戻る</a>
     </div>
 
