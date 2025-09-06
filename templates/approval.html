@@ -127,22 +127,22 @@
                             <td>{{ item.parsed_values.checkout_end_date|default('') }}</td>
                         </tr>
                         <tr>
-                            <th>所有者リスト</th>
-                            <td>
-                                {% if item.parsed_values.owner_list %}
-                                    <table style="border-collapse: collapse; font-size: 90%; margin-left: 10px;">
-                                        <tr><th>枝番</th><th>所有者</th></tr>
-                                        {% for owner in item.parsed_values.owner_list %}
-                                        <tr>
-                                            <td style="padding: 2px 8px;">{{ loop.index }}</td>
-                                            <td style="padding: 2px 8px;">{{ owner }}</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </table>
-                                {% else %}
-                                    （なし）
-                                {% endif %}
-                            </td>
+                        <th>所有者リスト</th>
+                        <td>
+                            {% if item.owner_pairs and item.owner_pairs|length > 0 %}
+                            <table style="border-collapse: collapse; font-size: 90%; margin-left: 10px;">
+                                <tr><th>枝番</th><th>所有者</th></tr>
+                                {% for b, owner in item.owner_pairs %}
+                                <tr>
+                                <td style="padding: 2px 8px;">{{ b }}</td>
+                                <td style="padding: 2px 8px;">{{ owner }}</td>
+                                </tr>
+                                {% endfor %}
+                            </table>
+                            {% else %}
+                            （なし）
+                            {% endif %}
+                        </td>
                         </tr>
                     {% endif %}
                     {% if item.parsed_values.status == "入庫持ち出し譲渡申請中" or item.parsed_values.status == "持ち出し譲渡申請中" %}

@@ -1383,7 +1383,51 @@ def approval():
             parsed['parsed_values'] = json.loads(item['new_values'])
         except Exception:
             parsed['parsed_values'] = {}
+
+        # ===== 所有者リストの枝番を「破棄・譲渡をスキップ」して表示用に再割当 =====
+        pv = parsed.get('parsed_values', {})
+        owners = pv.get('owner_list') or []
+        if owners:
+            item_id = parsed['item_id']
+
+            # 既存 child_item の枝番状況を取得
+            rows = db.execute(
+                "SELECT branch_no, status FROM child_item WHERE item_id=?",
+                (item_id,)
+            ).fetchall()
+            # 破棄・譲渡の枝番は使用不可
+            disposed_transferred = {r['branch_no'] for r in rows if r['status'] in ('破棄', '譲渡')}
+            occupied_alive = {r['branch_no'] for r in rows if r['status'] not in ('破棄', '譲渡')}
+
+            # 空いている「生きている枝番」を小さい順に再利用し、足りなければ新規の枝番番号を継ぎ足し
+            owner_pairs = []  # [(branch_no, owner), ...]
+            # まず再利用候補（生きている既存枝番）を昇順で
+            reuse_candidates = sorted(occupied_alive)
+            reuse_iter = iter(reuse_candidates)
+
+            # 次に新規採番開始位置（既存最大枝番の次）
+            max_existing = max([0] + [r['branch_no'] for r in rows])
+            next_branch = max_existing + 1
+
+            for owner in owners:
+                # 破棄・譲渡を避けて既存の生き枝番を優先
+                try:
+                    b = next(reuse_iter)
+                except StopIteration:
+                    # 足りなければ disposed/transferred を避けつつ新規採番
+                    while next_branch in disposed_transferred:
+                        next_branch += 1
+                    b = next_branch
+                    next_branch += 1
+
+                owner_pairs.append((b, owner))
+
+            parsed['owner_pairs'] = owner_pairs  # テンプレで使う
+        else:
+            parsed['owner_pairs'] = []
+
         parsed_items.append(parsed)
+        
     items = parsed_items
 
     if request.method == 'POST':
