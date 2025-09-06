@@ -1,0 +1,23 @@
+関係各位
+
+以下の通り、管理者を一括変更しました。
+
+■ 新管理者
+- {{ new_prof.department }} {{ new_prof.realname }}
+
+■ 旧管理者
+{% for p in old_profs %}
+- {{ p.department }} {{ p.realname }}
+{% else %}
+- （該当なし）
+{% endfor %}
+
+■ 変更対象（{{ items|length }}件）
+{% for it in items %}
+- ID: {{ it.id }} / 旧: {{ profiles[it.sample_manager].department }} {{ profiles[it.sample_manager].realname }} → 新: {{ new_prof.department }} {{ new_prof.realname }}
+{% endfor %}
+
+■ 操作したユーザー
+- {{ changer_prof.department }} {{ changer_prof.realname }}
+
+本メールにお心当たりがない場合は返信にてお知らせください。

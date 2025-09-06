@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash, session, g
+from flask import Flask, render_template, request, redirect, url_for, flash, session, g, render_template
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import json
@@ -326,25 +326,78 @@ def get_managers_by_department(department=None, db=None):
 
 def get_proper_users(db):
     return [
-        dict(username=row['username'], realname=row['realname'], department=row['department'])
+        dict(
+            username=row['username'],
+            realname=row['realname'],
+            department=row['department'],
+            email=row['email']
+        )
         for row in db.execute(
-            """SELECT u.username, u.realname, u.department
+            """SELECT u.username, u.realname, u.department, u.email
                  FROM users u
                  JOIN user_roles ur ON u.id = ur.user_id
                  JOIN roles r ON ur.role_id = r.id
-                WHERE r.name = 'proper' ORDER BY u.department, u.username""")
+                WHERE r.name = 'proper'
+             ORDER BY u.department, u.username"""
+        )
     ]
+
 
 def get_partner_users(db):
     return [
-        dict(username=row['username'], realname=row['realname'], department=row['department'])
+        dict(
+            username=row['username'],
+            realname=row['realname'],
+            department=row['department'],
+            email=row['email']
+        )
         for row in db.execute(
-            """SELECT u.username, u.realname, u.department
+            """SELECT u.username, u.realname, u.department, u.email
                  FROM users u
                  JOIN user_roles ur ON u.id = ur.user_id
                  JOIN roles r ON ur.role_id = r.id
-                WHERE r.name = 'partner' ORDER BY u.department, u.username""")
+                WHERE r.name = 'partner'
+             ORDER BY u.department, u.username"""
+        )
     ]
+
+
+def get_user_profile(db, username: str) -> dict:
+    """username から email / realname / department を取得。見つからなければ空文字で返す。"""
+    row = db.execute(
+        "SELECT username, email, realname, department FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+    if not row:
+        return {"username": username, "email": "", "realname": "", "department": ""}
+    return {
+        "username": row["username"],
+        "email": row["email"] or "",
+        "realname": row["realname"] or "",
+        "department": row["department"] or ""
+    }
+
+def get_user_profiles(db, usernames: list[str]) -> dict[str, dict]:
+    """複数 username に対応。{username: profile_dict} を返す。"""
+    if not usernames:
+        return {}
+    placeholders = ",".join(["?"] * len(usernames))
+    rows = db.execute(
+        f"SELECT username, email, realname, department FROM users WHERE username IN ({placeholders})",
+        list(usernames)
+    ).fetchall()
+    found = {
+        r["username"]: {
+            "username": r["username"],
+            "email": r["email"] or "",
+            "realname": r["realname"] or "",
+            "department": r["department"] or ""
+        } for r in rows
+    }
+    # 見つからなかったユーザーは空で埋める
+    for u in usernames:
+        found.setdefault(u, {"username": u, "email": "", "realname": "", "department": ""})
+    return found
 
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
@@ -1002,15 +1055,105 @@ def entry_request():
 
         db.commit()
 
-        # メール通知
-        to=""
-        subject=""
-        body=""
+        # ==== メール送信部（承認者・申請者・管理者・※with_checkout時は所有者も）====
+
+        # 件名を種類別に
+        if with_checkout and with_transfer:
+            subject_kind = "入庫持ち出し譲渡申請"
+        elif with_checkout:
+            subject_kind = "入庫持ち出し申請"
+        else:
+            subject_kind = "入庫申請"
+
+        # 対象 item と表示用の changes を組み立て
+        # - manager はフォームで選択された単一 username
+        # - owners は item ごとの owner_list（with_checkout のときのみ）
+        # - transfer 枝番は with_transfer のときのみ
+        from collections import defaultdict
+
+        # item の管理者はフォーム指定の単一ユーザー
+        manager_username = manager
+
+        # itemごとの owners（username配列）
+        owners_by_item = {}
+        if with_checkout:
+            for id in item_ids:
+                owners_by_item[int(id)] = [u for u in owner_lists.get(str(id), []) if u]
+
+        # itemごとの譲渡枝番（整数リスト）
+        transfer_branches_by_item = defaultdict(list)
+        if with_checkout and with_transfer and transfer_branch_ids:
+            for t in transfer_branch_ids:  # "itemID_branchNo" 形式
+                try:
+                    tid, branch_no = t.split("_")
+                    transfer_branches_by_item[int(tid)].append(int(branch_no))
+                except Exception:
+                    continue
+            # 並びを整える
+            for k in list(transfer_branches_by_item.keys()):
+                transfer_branches_by_item[k] = sorted(transfer_branches_by_item[k])
+
+        # changes 構造
+        changes = []
+        for id in item_ids:
+            iid = int(id)
+            changes.append({
+                "item_id": iid,
+                "manager": manager_username,  # username（本文では profiles で部署/氏名へ引き直す）
+                "owners": owners_by_item.get(iid, []),  # [username]
+                "transfer_branch_nos": transfer_branches_by_item.get(iid, []),  # [int]
+            })
+
+        # プロフィールを一括取得（宛先・本文用）
+        usernames_to_fetch = {approver, applicant, manager_username}
+        if with_checkout:
+            all_owner_usernames = {u for arr in owners_by_item.values() for u in arr}
+            usernames_to_fetch |= all_owner_usernames
+
+        profiles = get_user_profiles(db, list(usernames_to_fetch))
+        approver_prof  = profiles.get(approver,  {})
+        applicant_prof = profiles.get(applicant, {})
+        manager_prof   = profiles.get(manager_username, {})
+        owner_profs    = []
+        if with_checkout:
+            # 重複除去した所有者を部門・氏名順に出したければソートキー調整もOK
+            owner_profs = [profiles[u] for u in sorted({u for arr in owners_by_item.values() for u in arr})]
+
+        # 宛先（重複除去）
+        to_emails = set()
+        for p in [approver_prof, applicant_prof, manager_prof] + (owner_profs if with_checkout else []):
+            email = p.get("email") if isinstance(p, dict) else None
+            if email:
+                to_emails.add(email)
+        to = ",".join(sorted(to_emails))
+
+        # 件名
+        subject = f"[申請] {subject_kind}の保存（{len(changes)}件）"
+
+        # 本文（usernameは本文に出さない）
+        body = render_template(
+            "mails/entry_request.txt",
+            approver_prof=approver_prof,
+            applicant_prof=applicant_prof,
+            manager_prof=manager_prof,
+            owner_profs=owner_profs,      # with_checkout のときのみ非空
+            changes=changes,
+            profiles=profiles,            # manager/owners を部署・氏名へ引くため
+            with_checkout=with_checkout,
+            with_transfer=with_transfer,
+            start_date=start_date,
+            end_date=end_date,
+            comment=comment,
+            transfer_comment=transfer_comment,
+            transfer_date=transfer_date,
+        )
+
         result = send_mail(to=to, subject=subject, body=body)
         if result:
-            flash(f"申請内容を保存しました。承認待ちです。承認者にメールで連絡しました。")
+            flash(f"{subject_kind}を保存しました。承認待ちです。承認者ほか関係者にメールで連絡しました。")
         else:
-            flash(f"申請内容を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+            flash(f"{subject_kind}を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+        # ==== ここまで ====
 
         if request.form.get('from_menu') or request.args.get('from_menu'):
             return redirect(url_for('menu'))
@@ -1244,14 +1387,70 @@ def checkout_request():
 
         db.commit()
 
-        to=""
-        subject=""
-        body=""
+        # ==== メール送信部（承認者・申請者・管理者・所有者）====
+
+        # itemごとの表示用データ作成
+        # - manager はフォームで選ばれた単一ユーザー（username）
+        # - approver はフォームで選ばれた単一ユーザー（username）
+        # - applicant は g.user['username']
+        # - owners は itemごとの owner_list（usernameの配列）
+        changes = []
+        all_owner_usernames = set()
+        for id in item_ids:
+            owners = owner_lists.get(str(id), [])  # usernameの配列
+            owners = [o for o in owners if o]      # 空除去
+            all_owner_usernames.update(owners)
+            changes.append({
+                "item_id": int(id),
+                "manager": manager,        # username
+                "approver": approver,      # username
+                "applicant": applicant,    # username
+                "owners": owners           # [username]
+            })
+
+        # プロフィールを一括取得（宛先・本文用）
+        usernames_to_fetch = {approver, applicant, manager} | set(all_owner_usernames)
+        profiles = get_user_profiles(db, list(usernames_to_fetch))
+
+        approver_prof  = profiles.get(approver,  {})
+        applicant_prof = profiles.get(applicant, {})
+        manager_prof   = profiles.get(manager,   {})
+        owner_profs    = [profiles[u] for u in sorted(all_owner_usernames)]
+
+        # 宛先（重複排除）: 承認者・申請者・管理者・所有者
+        to_emails = set()
+        for p in [approver_prof, applicant_prof, manager_prof] + owner_profs:
+            email = p.get("email") if isinstance(p, dict) else None
+            if email:
+                to_emails.add(email)
+        to = ",".join(sorted(to_emails))
+
+        # 件名
+        subject = f"[申請] 持ち出し申請の保存（{len(changes)}件）"
+
+        # 本文（usernameは本文に出さない）
+        body = render_template(
+            "mails/checkout_request.txt",
+            approver_prof=approver_prof,
+            applicant_prof=applicant_prof,
+            manager_prof=manager_prof,
+            owner_profs=owner_profs,
+            changes=changes,
+            profiles=profiles,  # changes内のusernameを氏名/部署へ変換するためにlookupで使用
+            with_transfer=with_transfer,
+            start_date=start_date,
+            end_date=end_date,
+            comment=comment,
+            transfer_comment=transfer_comment,
+            transfer_date=transfer_date,
+        )
+
         result = send_mail(to=to, subject=subject, body=body)
         if result:
-            flash(f"持ち出し申請を保存しました。承認待ちです。承認者にメールで連絡しました。")
+            flash("持ち出し申請を保存しました。承認待ちです。承認者ほか関係者にメールで連絡しました。")
         else:
-            flash(f"持ち出し申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+            flash("持ち出し申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+        # ==== ここまで ====
 
         if request.form.get('from_menu') or request.args.get('from_menu'):
             return redirect(url_for('menu'))
@@ -1347,14 +1546,56 @@ def return_request():
             ))
         db.commit()
 
-        to=""
-        subject=""
-        body=""
+        # ==== メール送信部（承認者・申請者・管理者）====
+
+        # 対象 item の管理者（username）を収集
+        items_rows = db.execute(
+            f"SELECT id, sample_manager FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+            item_ids
+        ).fetchall()
+        manager_usernames = {row['sample_manager'] for row in items_rows if row and row['sample_manager']}
+
+        # 申請者・承認者・管理者のプロフィールを一括取得
+        usernames_to_fetch = {approver, applicant} | manager_usernames
+        profiles = get_user_profiles(db, list(usernames_to_fetch))
+
+        approver_prof  = profiles.get(approver,  {})
+        applicant_prof = profiles.get(applicant, {})
+        manager_profs  = [profiles[u] for u in sorted(manager_usernames)]
+
+        # 宛先（重複除去）
+        to_emails = set()
+        for p in [approver_prof, applicant_prof] + manager_profs:
+            email = p.get("email") if isinstance(p, dict) else None
+            if email:
+                to_emails.add(email)
+        to = ",".join(sorted(to_emails))
+
+        # 表示用の changes（itemとその管理者）
+        changes = [{"item_id": row["id"], "manager": row["sample_manager"]} for row in items_rows]
+
+        # 件名
+        subject = f"[申請] 返却申請の保存（{len(changes)}件）"
+
+        # 本文（usernameは本文に出さない）
+        body = render_template(
+            "mails/return_request.txt",
+            approver_prof=approver_prof,
+            applicant_prof=applicant_prof,
+            manager_profs=manager_profs,
+            changes=changes,
+            profiles=profiles,          # manager の部署/氏名へ変換に使用
+            return_date=return_date,
+            storage=storage,
+            applicant_comment=applicant_comment,
+        )
+
         result = send_mail(to=to, subject=subject, body=body)
         if result:
-            flash(f"申請内容を保存しました。承認待ちです。承認者にメールで連絡しました。")
+            flash("返却申請を保存しました。承認待ちです。承認者ほか関係者にメールで連絡しました。")
         else:
-            flash(f"申請内容を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+            flash("返却申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+        # ==== ここまで ====
 
         if request.args.get('from_menu') or request.form.get('from_menu'):
             return redirect(url_for('menu'))
@@ -1829,14 +2070,14 @@ def bulk_manager_change():
         {
             'username': u['username'],
             'department': u.get('department', ''),
-            'realname': u.get('realname', '')
+            'realname': u.get('realname', ''),
+            'email': u.get('email', '')
         } for u in proper_users
     ]
 
     if request.method == 'POST':
         new_manager = request.form.get('new_manager', '').strip()
         if not new_manager or new_manager not in proper_usernames:
-            # ダイアログでエラー表示
             items = db.execute(f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
             return render_template(
                 'bulk_manager_change.html',
@@ -1844,18 +2085,48 @@ def bulk_manager_change():
                 proper_users=proper_users_json,
                 error_message="管理者は候補から選択してください。"
             )
+
+        # 旧管理者（変更前）を確定させるため、更新前 items を使って set 化
+        old_managers = set(item['sample_manager'] for item in items)
+
         # 一括更新
         db.executemany("UPDATE item SET sample_manager=? WHERE id=?", [(new_manager, item['id']) for item in items])
         db.commit()
 
-        # メール通知
-        old_managers = set(item['sample_manager'] for item in items)
-        to=""
-        subject=""
-        body=""
+        # === ここから通知メール作成 ===
+        # 旧管理者 + 新管理者 のプロフィールをまとめて取得
+        usernames_to_fetch = list(old_managers | {new_manager})
+        profiles = get_user_profiles(db, usernames_to_fetch)
+
+        new_prof = profiles.get(new_manager, {"email": "", "realname": "", "department": ""})
+        old_profs = [profiles[u] for u in old_managers]
+
+        # 宛先: 旧管理者全員 + 新管理者 + 操作した本人
+        to_emails = {p["email"] for p in old_profs if p.get("email")}
+        if new_prof.get("email"):
+            to_emails.add(new_prof["email"])
+
+        # 変更者（ログインユーザー）
+        changer_prof = get_user_profile(db, g.user["username"])
+        if changer_prof.get("email"):
+            to_emails.add(changer_prof["email"])
+        
+        # 件名と本文（必要に応じて整形）
+        subject = f"[通知] 管理者一括変更 ({len(items)}件)"
+        body = render_template(
+            "mails/manager_change.txt",
+            new_prof=new_prof,
+            old_profs=old_profs,
+            items=items,
+            profiles=profiles,
+            changer_prof=changer_prof
+        )
+
+        to = ",".join(sorted(to_emails))
         result = send_mail(to=to, subject=subject, body=body)
+
         if result:
-            flash(f"管理者を「{new_manager}」に一括変更しました。旧管理者・新管理者・承認者にメールで連絡しました。")
+            flash(f"管理者を「{new_manager}」に一括変更しました。旧管理者・新管理者にメールで連絡しました。")
         else:
             flash(f"管理者を「{new_manager}」に一括変更しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
@@ -1977,14 +2248,94 @@ def change_owner():
         db.commit()
 
         # メール通知
-        to=""
-        subject=""
-        body=""
+        updates_map = {ci_id: new_owner for (new_owner, ci_id) in updates}
+
+        items_by_id = {it['id']: it for it in items}  # item_id -> sqlite3.Row
+
+        changes = []
+        manager_usernames = set()
+        old_owner_usernames = set()
+        new_owner_usernames = set()
+
+        def row_get(row, key, default=""):
+            """sqlite3.Row 安全アクセス"""
+            if not row:
+                return default
+            try:
+                val = row[key]
+                return default if val is None else val
+            except Exception:
+                return default
+
+        for ci in child_items:
+            if ci['id'] not in updates_map:
+                continue  # 更新なし
+            new_owner = updates_map[ci['id']]
+            old_owner = ci['owner']
+            if new_owner == old_owner:
+                continue
+
+            item = items_by_id.get(ci['item_id'])
+            # Row から安全に取り出す（.get は使わない）
+            manager = row_get(item, 'sample_manager', '')
+
+            changes.append({
+                "item_id": ci['item_id'],
+                "branch_no": ci['branch_no'],
+                "manager": manager,
+                "old_owner": old_owner,
+                "new_owner": new_owner,
+            })
+
+            if manager:
+                manager_usernames.add(manager)
+            if old_owner:
+                old_owner_usernames.add(old_owner)
+            if new_owner:
+                new_owner_usernames.add(new_owner)
+
+        # 変更者
+        changer_username = g.user['username']
+
+        # プロフィールを一括取得
+        all_usernames = (
+            {changer_username} |
+            manager_usernames |
+            old_owner_usernames |
+            new_owner_usernames
+        )
+        profiles = get_user_profiles(db, list(all_usernames))
+
+        changer_prof = profiles.get(changer_username, {})
+        manager_profs = [profiles[u] for u in sorted(manager_usernames)]
+        old_owner_profs = [profiles[u] for u in sorted(old_owner_usernames)]
+        new_owner_profs = [profiles[u] for u in sorted(new_owner_usernames)]
+
+        # 宛先（重複除去）
+        to_emails = set()
+        for p in manager_profs + old_owner_profs + new_owner_profs + [changer_prof]:
+            email = p.get("email") if isinstance(p, dict) else None
+            if email:
+                to_emails.add(email)
+        to = ",".join(sorted(to_emails))
+
+        subject = f"[通知] 所有者変更 ({len(changes)}件)"
+
+        body = render_template(
+            "mails/owner_change.txt",
+            changer_prof=changer_prof,
+            manager_profs=manager_profs,
+            old_owner_profs=old_owner_profs,
+            new_owner_profs=new_owner_profs,
+            changes=changes,
+            profiles=profiles,  # テンプレで department/realname 参照用
+        )
+
         result = send_mail(to=to, subject=subject, body=body)
         if result:
-            flash(f"所有者を変更しました。所有者・管理者・承認者にメールで連絡しました。")
+            flash("所有者を変更しました。所有者・管理者・変更者にメールで連絡しました。")
         else:
-            flash(f"所有者を変更しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+            flash("所有者を変更しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
     else:
         flash("変更はありませんでした。")
@@ -2124,14 +2475,80 @@ def dispose_transfer_request():
             db.execute("UPDATE item SET status=? WHERE id=?", ("破棄・譲渡申請中", item_id))
         db.commit()
 
-        to=""
-        subject=""
-        body=""
+        # ==== メール送信部（承認者・申請者・管理者）====
+
+        # 申請に含まれる item の管理者（username）を収集
+        items_rows = db.execute(
+            f"SELECT id, sample_manager FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+            item_ids
+        ).fetchall()
+        manager_usernames = {row['sample_manager'] for row in items_rows if row and row['sample_manager']}
+
+        # 申請者・承認者・管理者（username）をまとめてプロフィール取得
+        applicant = g.user['username']  # 既に上で定義済みですが念のため
+        usernames_to_fetch = {approver, applicant} | manager_usernames
+        profiles = get_user_profiles(db, list(usernames_to_fetch))
+
+        approver_prof  = profiles.get(approver,  {})
+        applicant_prof = profiles.get(applicant, {})
+        manager_profs  = [profiles[u] for u in sorted(manager_usernames)]
+
+        # 宛先（重複除去）: 承認者・申請者・管理者
+        to_emails = set()
+        for p in [approver_prof, applicant_prof] + manager_profs:
+            email = p.get("email") if isinstance(p, dict) else None
+            if email:
+                to_emails.add(email)
+        to = ",".join(sorted(to_emails))
+
+        # 本文に載せる「対象アイテムと枝番」の一覧を作成
+        # target_child_ids は全体の子アイテムIDリストなので、item_id ごとにまとめ直す
+        from collections import defaultdict
+        branches_by_item = defaultdict(list)
+        if target_child_ids:
+            rows = db.execute(
+                f"SELECT id, item_id, branch_no FROM child_item WHERE id IN ({','.join(['?']*len(target_child_ids))})",
+                target_child_ids
+            ).fetchall()
+            for r in rows:
+                branches_by_item[r['item_id']].append(r['branch_no'])
+
+        # 表示用の changes 構造（テンプレに渡す）
+        changes = []
+        for row in items_rows:
+            item_id = row['id']
+            manager  = row['sample_manager']
+            branch_nos = sorted(branches_by_item.get(item_id, []))
+            changes.append({
+                "item_id": item_id,
+                "manager": manager,          # username（本文では profiles[...] で部署/氏名に変換）
+                "branch_nos": branch_nos,    # [int]
+            })
+
+        # 件名
+        subject = f"[申請] 破棄・譲渡申請の保存（{len(changes)}件）"
+
+        # 本文（usernameは本文に出さない）
+        body = render_template(
+            "mails/dispose_transfer_request.txt",
+            approver_prof=approver_prof,
+            applicant_prof=applicant_prof,
+            manager_profs=manager_profs,
+            changes=changes,
+            profiles=profiles,          # manager の部署/氏名へ lookup 用
+            dispose_type=dispose_type,  # 破棄 or 譲渡
+            dispose_date=dispose_date,
+            handler=handler,            # 対応者の username（本文では出さないが、必要なら後で使える）
+            dispose_comment=dispose_comment,
+            applicant_comment=applicant_comment,
+        )
+
         result = send_mail(to=to, subject=subject, body=body)
         if result:
-            flash(f"破棄・譲渡申請を保存しました。承認待ちです。承認者にメールで連絡しました。")
+            flash("破棄・譲渡申請を保存しました。承認待ちです。承認者ほか関係者にメールで連絡しました。")
         else:
-            flash(f"破棄・譲渡申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+            flash("破棄・譲渡申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+        # ==== ここまで ====
 
         if request.form.get('from_menu'):
             return redirect(url_for('menu'))

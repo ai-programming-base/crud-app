@@ -1,0 +1,52 @@
+関係各位
+
+以下の通り、{{ with_transfer and '入庫持ち出し譲渡申請' or (with_checkout and '入庫持ち出し申請' or '入庫申請') }}を保存しました（承認待ち）。
+
+■ 承認者
+- {{ approver_prof.department }} {{ approver_prof.realname }}
+
+■ 申請者
+- {{ applicant_prof.department }} {{ applicant_prof.realname }}
+
+■ 管理者
+- {{ manager_prof.department }} {{ manager_prof.realname }}
+
+{% if with_checkout %}
+■ 所有者
+{% for p in owner_profs %}
+- {{ p.department }} {{ p.realname }}
+{% else %}
+- （該当なし）
+{% endfor %}
+{% endif %}
+
+■ 申請情報
+{% if with_checkout %}
+- 期間: {{ start_date or '（未入力）' }} 〜 {{ end_date or '（未入力）' }}
+- コメント: {{ comment or '（なし）' }}
+{% if with_transfer %}
+- 譲渡予定日: {{ transfer_date or '（未入力）' }}
+- 譲渡コメント: {{ transfer_comment or '（なし）' }}
+{% endif %}
+{% else %}
+- コメント: {{ comment or '（なし）' }}
+{% endif %}
+
+■ 対象（{{ changes|length }}件）
+{% for c in changes %}
+- ItemID: {{ c.item_id }}
+  管理者: {{ profiles[c.manager].department }} {{ profiles[c.manager].realname }}
+{% if with_checkout %}
+  所有者:
+  {% if c.owners %}
+  {% for u in c.owners %}- {{ profiles[u].department }} {{ profiles[u].realname }}
+  {% endfor %}
+  {% else %}- （未設定）
+  {% endif %}
+  {% if with_transfer %}
+  譲渡枝番: {% if c.transfer_branch_nos %}{{ c.transfer_branch_nos|join(', ') }}{% else %}（未選択）{% endif %}
+  {% endif %}
+{% endif %}
+{% endfor %}
+
+本メールにお心当たりがない場合は返信にてお知らせください。

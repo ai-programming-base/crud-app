@@ -1,0 +1,31 @@
+関係各位
+
+以下の通り、破棄・譲渡申請を保存しました（承認待ち）。
+
+■ 承認者
+- {{ approver_prof.department }} {{ approver_prof.realname }}
+
+■ 申請者
+- {{ applicant_prof.department }} {{ applicant_prof.realname }}
+
+■ 管理者
+{% for p in manager_profs %}
+- {{ p.department }} {{ p.realname }}
+{% else %}
+- （該当なし）
+{% endfor %}
+
+■ 申請内容
+- 種別: {{ dispose_type or '（未入力）' }}
+- 実施日: {{ dispose_date or '（未入力）' }}
+- 対応メモ: {{ dispose_comment or '（なし）' }}
+- 申請メモ: {{ applicant_comment or '（なし）' }}
+
+■ 対象（{{ changes|length }}件）
+{% for c in changes %}
+- ItemID: {{ c.item_id }}
+  管理者: {% if c.manager %}{{ profiles[c.manager].department }} {{ profiles[c.manager].realname }}{% else %}（未設定）{% endif %}
+  枝番: {% if c.branch_nos %}{{ c.branch_nos|join(', ') }}{% else %}（未選択）{% endif %}
+{% endfor %}
+
+本メールにお心当たりがない場合は返信にてお知らせください。

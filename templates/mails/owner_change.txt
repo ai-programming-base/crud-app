@@ -1,0 +1,37 @@
+関係各位
+
+以下の通り、所有者を変更しました。
+
+■ 変更者
+- {{ changer_prof.department }} {{ changer_prof.realname }}
+
+■ 管理者
+{% for p in manager_profs %}
+- {{ p.department }} {{ p.realname }}
+{% else %}
+- （該当なし）
+{% endfor %}
+
+■ 旧所有者
+{% for p in old_owner_profs %}
+- {{ p.department }} {{ p.realname }}
+{% else %}
+- （該当なし）
+{% endfor %}
+
+■ 新所有者
+{% for p in new_owner_profs %}
+- {{ p.department }} {{ p.realname }}
+{% else %}
+- （該当なし）
+{% endfor %}
+
+■ 変更対象（{{ changes|length }}件）
+{% for c in changes %}
+- ItemID: {{ c.item_id }} / 枝番: {{ c.branch_no }}
+  旧: {{ profiles[c.old_owner].department }} {{ profiles[c.old_owner].realname }}
+   → 新: {{ profiles[c.new_owner].department }} {{ profiles[c.new_owner].realname }}
+  管理者: {% if c.manager %}{{ profiles[c.manager].department }} {{ profiles[c.manager].realname }}{% else %}（未設定）{% endif %}
+{% endfor %}
+
+本メールにお心当たりがない場合は返信にてお知らせください。
