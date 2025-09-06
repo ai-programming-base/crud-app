@@ -1568,30 +1568,49 @@ def approval():
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
                     start_date = new_values.get("checkout_start_date", "")
                     end_date = new_values.get("checkout_end_date", "")
+
                     owners = new_values.get("owner_list", [])
                     if not owners:
                         num_of_samples = int(new_values.get("num_of_samples", 1))
-                        owner = new_values.get("sample_manager", "")
-                        owners = [owner] * num_of_samples
-                    for idx, owner in enumerate(owners, 1):
-                        child_item = db.execute(
-                            "SELECT * FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
-                        ).fetchone()
-                        if not child_item:
+                        owner_fallback = new_values.get("sample_manager", "")
+                        owners = [owner_fallback] * num_of_samples
+
+                    # 既存の child_item 取得
+                    rows = db.execute(
+                        "SELECT branch_no, status FROM child_item WHERE item_id=? ORDER BY branch_no",
+                        (item_id,)
+                    ).fetchall()
+
+                    if not rows:
+                        # 0レコードなら新規作成（1..N）
+                        for idx, owner in enumerate(owners, 1):
                             db.execute(
                                 "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
                                 (item_id, idx, owner, "持ち出し中", "")
                             )
-                            child_item_id = db.execute(
-                                "SELECT id FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
-                            ).fetchone()["id"]
-                        else:
-                            child_item_id = child_item["id"]
-                            db.execute(
-                                "UPDATE child_item SET owner=?, status=? WHERE id=?",
-                                (owner, "持ち出し中", child_item_id)
-                            )
+                    else:
+                        # 1件でもあれば追加しない（UPDATEのみ）
+                        alive = [r["branch_no"] for r in rows if r["status"] not in ("破棄","譲渡")]
 
+                        # 生き枝番が owners より少なければ、この申請は不整合なのでスキップ（全体は継続）
+                        if len(owners) > len(alive):
+                            flash(f"通し番号 {item_id}: 生きている枝番（{len(alive)}）より所有者が多い（{len(owners)}）ため、追加は行わず更新できません。")
+                            continue
+
+                        # 小さい順に一度ずつ割り当てて UPDATE（破棄/譲渡は据え置き）
+                        for branch_no, owner in zip(alive, owners):
+                            db.execute(
+                                """
+                                UPDATE child_item
+                                SET owner  = CASE WHEN status IN (?, ?) THEN owner ELSE ? END,
+                                    status = CASE WHEN status IN (?, ?) THEN status ELSE ? END
+                                WHERE item_id=? AND branch_no=?
+                                """,
+                                ("破棄","譲渡", owner, "破棄","譲渡", "持ち出し中", item_id, branch_no)
+                            )
+                        # ※ owners が alive より少ない場合、余った枝番は触らず据え置き
+
+                    # 履歴
                     db.execute(
                         "INSERT INTO checkout_history (item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
                         (item_id, start_date, end_date)
