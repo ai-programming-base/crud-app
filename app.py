@@ -1605,6 +1605,105 @@ def return_request():
     return redirect(url_for('index'))
 
 
+def build_application_mail(db, app_row, action: str, approver_comment: str = "") -> tuple[str, str, str]:
+    """
+    item_application の1件 (app_row) と action ('approve' | 'reject') から
+    (to, subject, body) を返す。
+    """
+    # sqlite3.Row -> dict に変換して .get を安全に使えるようにする
+    if not isinstance(app_row, dict):
+        app_row = dict(app_row)
+
+    item_id = app_row["item_id"]
+    approver = app_row["approver"]                  # username
+    applicant = app_row["applicant"]                # username
+    try:
+        new_values = json.loads(app_row.get("new_values") or "{}")
+    except Exception:
+        new_values = {}
+    status = (new_values.get("status") or "").strip()
+
+    # 申請側で指定された管理者（なければ item テーブルから補完）
+    manager_username = (new_values.get("sample_manager") or "").strip()
+    if not manager_username:
+        row = db.execute("SELECT sample_manager FROM item WHERE id=?", (item_id,)).fetchone()
+        manager_username = (row["sample_manager"] if row and row["sample_manager"] else "").strip()
+
+    # 所有者を宛先に含めるタイプか？
+    include_owners = status in (
+        "入庫持ち出し申請中", "入庫持ち出し譲渡申請中",
+        "持ち出し申請中", "持ち出し譲渡申請中"
+    )
+    owners = list(new_values.get("owner_list") or []) if include_owners else []
+
+    # プロフィール取得
+    usernames = {approver, applicant}
+    if manager_username:
+        usernames.add(manager_username)
+    if include_owners:
+        usernames |= set([u for u in owners if u])
+
+    profiles = get_user_profiles(db, list(usernames))
+    approver_prof  = profiles.get(approver,  {})
+    applicant_prof = profiles.get(applicant, {})
+    manager_prof   = profiles.get(manager_username, {}) if manager_username else {}
+    owner_profs    = [profiles[u] for u in sorted(set([u for u in owners if u]))] if include_owners else []
+
+    # 宛先（重複除去）
+    to_emails = set()
+    for p in [approver_prof, applicant_prof, manager_prof] + owner_profs:
+        if isinstance(p, dict) and p.get("email"):
+            to_emails.add(p["email"])
+    to = ",".join(sorted(to_emails))
+
+    # 件名
+    action_label = "承認" if action == "approve" else "差し戻し"
+    kind = (
+        "入庫持ち出し譲渡申請" if status == "入庫持ち出し譲渡申請中" else
+        "入庫持ち出し申請"     if status == "入庫持ち出し申請中" else
+        "入庫申請"             if status == "入庫申請中" else
+        "持ち出し譲渡申請"       if status == "持ち出し譲渡申請中" else
+        "持ち出し申請"           if status == "持ち出し申請中" else
+        "返却申請"              if status == "返却申請中" else
+        "破棄・譲渡申請"          if status == "破棄・譲渡申請中" else
+        (status or "申請")
+    )
+    subject = f"[{action_label}] {kind}（ID: {item_id}）"
+
+    # 本文テンプレに渡すデータ
+    changes = [{
+        "item_id": item_id,
+        "manager": manager_username,   # username（本文では profiles[...] で部署/氏名に変換）
+        "owners": owners               # [username]
+    }]
+
+    body = render_template(
+        "mails/approval_result.txt",
+        approver_prof=approver_prof,
+        applicant_prof=applicant_prof,
+        manager_prof=manager_prof,
+        owner_profs=owner_profs,
+        profiles=profiles,
+        action_label=action_label,
+        kind=kind,
+        changes=changes,
+        # new_values 由来の任意項目（テンプレ側条件付き）
+        start_date=new_values.get("checkout_start_date", ""),
+        end_date=new_values.get("checkout_end_date", ""),
+        transfer_date=new_values.get("transfer_date", ""),
+        transfer_comment=new_values.get("transfer_comment", ""),
+        dispose_type=new_values.get("dispose_type", ""),
+        dispose_date=new_values.get("dispose_date", ""),
+        dispose_comment=new_values.get("dispose_comment", ""),
+        return_date=new_values.get("return_date", ""),
+        storage=new_values.get("storage", ""),
+        applicant_comment=app_row.get("applicant_comment", "") or "",
+        approver_comment=approver_comment or "",
+    )
+
+    return to, subject, body
+
+
 @app.route('/approval', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin', 'manager')
@@ -1927,14 +2026,12 @@ def approval():
                 ))
 
                 # メール通知
-                to=""
-                subject=""
-                body=""
+                to, subject, body = build_application_mail(db, app_row, action="approve", approver_comment=comment)
                 result = send_mail(to=to, subject=subject, body=body)
                 if result:
-                    flash(f"承認しました。申請者にメールで連絡しました。")
+                    flash("承認しました。関係者にメールで連絡しました。")
                 else:
-                    flash(f"承認しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+                    flash("承認しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
             elif action == 'reject':
                 original_status = app_row['original_status']
@@ -1950,14 +2047,12 @@ def approval():
                 )
 
                 # メール通知
-                to=""
-                subject=""
-                body=""
+                to, subject, body = build_application_mail(db, app_row, action="reject", approver_comment=comment)
                 result = send_mail(to=to, subject=subject, body=body)
                 if result:
-                    flash(f"差し戻しました。申請者にメールで連絡しました。")
+                    flash("差し戻しました。関係者にメールで連絡しました。")
                 else:
-                    flash(f"差し戻しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
+                    flash("差し戻しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
         db.commit()
         # 完了後は空リスト＋メッセージ表示
