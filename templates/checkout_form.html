@@ -112,7 +112,11 @@
                 <input type="hidden" name="item_id" value="{{ item['id'] }}">
             </td>
             {% for f in fields %}
-            <td>{{ item[f.key] }}</td>
+                {% if f.key == 'sample_manager' %}
+                    <td>{{ user_display.get(item[f.key], item[f.key]) }}</td>
+                {% else %}
+                    <td>{{ item[f.key] }}</td>
+                {% endif %}
             {% endfor %}
             <td>{{ item['available_count'] }}</td>
             <td><input type="checkbox" name="qty_checked"></td>

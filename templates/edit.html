@@ -167,7 +167,13 @@ document.addEventListener('DOMContentLoaded', function () {
               <input type="hidden" name="{{ key }}_{{ item['id'] }}" value="{{ item.get(key, '') or '' }}">
             </td>
           {% else %}
-            <td>{{ item.get(key, '') }}</td>
+            <td>
+              {% if key == 'sample_manager' %}
+                {{ user_display.get(item.get(key, ''), item.get(key, '')) }}
+              {% else %}
+                {{ item.get(key, '') }}
+              {% endif %}
+            </td>
           {% endif %}
         {% endfor %}
       </tr>

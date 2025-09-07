@@ -110,7 +110,14 @@
         <tr>
             <td>{{ item['id'] }}</td>
             <td>{{ item['product_name'] }}</td>
-            <td>{{ item['sample_manager'] }}</td>
+            <td>
+                {% set prof = profiles.get(item['sample_manager']) %}
+                {% if prof %}
+                    {{ (prof.get('department','') ~ ' ' ~ prof.get('realname','')).strip() }}
+                {% else %}
+                    {{ item['sample_manager'] }}
+                {% endif %}
+            </td>
         </tr>
         {% endfor %}
     </table>

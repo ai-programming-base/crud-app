@@ -223,7 +223,18 @@
               {% endfor %}
             </td>
             <td>{{ ci.branch_no }}</td>
-            <td>{{ ci.owner or '' }}</td>
+            <td>
+            {% if ci.owner %}
+                {% set p = profiles.get(ci.owner) %}
+                {% if p %}
+                {{ (p.get('department','') ~ ' ' ~ p.get('realname','')).strip() }}
+                {% else %}
+                {{ ci.owner }}
+                {% endif %}
+            {% else %}
+                {{ '' }}
+            {% endif %}
+            </td>
 
             {# ▼ 現在の所有者が空欄なら入力不可＆チェック対象外 #}
             {% if not ci.owner %}

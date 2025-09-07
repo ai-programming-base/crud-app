@@ -224,7 +224,11 @@
                 <input type="hidden" name="item_id" value="{{ item['id'] }}">
             </td>
             {% for f in fields %}
-            <td>{{ item[f.key] }}</td>
+                {% if f.key == 'sample_manager' %}
+                    <td>{{ user_display.get(item[f.key], item[f.key]) }}</td>
+                {% else %}
+                    <td>{{ item[f.key] }}</td>
+                {% endif %}
             {% endfor %}
             <td>{{ item.sample_count }}</td>
             <td>
@@ -259,7 +263,7 @@
                     <input type="checkbox" name="target_child_ids" value="{{ ci['id'] }}" class="child-checkbox-{{ item['id'] }}">
                 </td>
                 <td>{{ ci['branch_no'] }}</td>
-                <td>{{ ci['owner'] }}</td>
+                <td>{{ user_display_dept.get(ci['owner'], ci['owner']) }}</td>
                 <td>{{ ci['status'] }}</td>
                 <td>{{ ci['comment'] }}</td>
             </tr>

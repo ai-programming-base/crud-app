@@ -63,7 +63,8 @@
                 <span class="status-s">申請中</span>
             {% endif %}
         </td>
-        <td>{{ app['approver'] }}</td>
+        {% set appr = app['approver'] %}
+        <td>{{ user_display.get(appr, appr) if appr else '-' }}</td>
         <td>{{ app['approval_datetime'] }}</td>
         <td>{{ app['approver_comment'] }}</td>
     </tr>

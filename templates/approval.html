@@ -37,7 +37,6 @@
             if (!confirm("承認しますか？")) return false;
             return true;
         }
-
         function onReject() {
             var checked = document.querySelectorAll('input[name="selected_ids"]:checked').length;
             if (checked === 0) {
@@ -52,11 +51,8 @@
             if (!confirm("差し戻ししますか？")) return false;
             return true;
         }
-
-        // 上下の全選択チェックボックスを同期
         function toggleAll(checked) {
             for(let c of document.getElementsByName('selected_ids')) c.checked = checked;
-            // 反対側も同期
             document.getElementById('select_all_top').checked = checked;
             document.getElementById('select_all_bottom').checked = checked;
         }
@@ -64,6 +60,19 @@
 {% endblock %}
 
 {% block content %}
+{# ▼ department realname で表示するためのヘルパー #}
+{% macro show(val) -%}
+  {%- if val is string -%}
+    {{ user_display.get(val, val) }}
+  {%- elif val is sequence and (val is not string) -%}
+    {%- for x in val -%}
+      {{ user_display.get(x, x) }}{{ ', ' if not loop.last }}
+    {%- endfor -%}
+  {%- else -%}
+    {{ val }}
+  {%- endif -%}
+{%- endmacro %}
+
 <h1>申請承認画面</h1>
 {% if message %}
   <div class="info-message">{{ message }}</div>
@@ -75,10 +84,7 @@
     {% endif %}
     <table>
         <tr>
-            <th>
-              <input type="checkbox" id="select_all_top"
-                     onclick="toggleAll(this.checked);">
-            </th>
+            <th><input type="checkbox" id="select_all_top" onclick="toggleAll(this.checked);"></th>
             <th>履歴ID</th>
             <th>通し番号</th>
             <th>申請者</th>
@@ -90,12 +96,13 @@
         </tr>
         {% for item in items %}
         <tr>
-            <td>
-                <input type="checkbox" name="selected_ids" value="{{ item['id'] }}">
-            </td>
+            <td><input type="checkbox" name="selected_ids" value="{{ item['id'] }}"></td>
             <td>{{ item['id'] }}</td>
             <td>{{ item['item_id'] }}</td>
-            <td>{{ item['applicant'] }}</td>
+
+            {# ★ 申請者（username→department realname） #}
+            <td>{{ show(item['applicant']) }}</td>
+
             <td>
                 {% if item.parsed_values.status == "入庫持ち出し申請中" %}
                     入庫持ち出し申請
@@ -109,118 +116,89 @@
                     {{ item['application_content']|default(item.parsed_values.status|default('')) }}
                 {% endif %}
             </td>
+
             <td>
                 <table class="detail-table">
+                    {# ★ 通常フィールドも、値が username（または username 配列）なら自動置換 #}
                     {% for f in fields %}
                         <tr>
                             <th>{{ f.name }}</th>
-                            <td>{{ item.parsed_values[f.key]|default('') }}</td>
+                            <td>{{ show(item.parsed_values[f.key]|default('')) }}</td>
                         </tr>
                     {% endfor %}
-                    {% if item.parsed_values.status == "入庫持ち出し申請中" or item.parsed_values.status == "入庫持ち出し譲渡申請中" or item.parsed_values.status == "持ち出し申請中" or item.parsed_values.status == "持ち出し譲渡申請中" %}
+
+                    {% if item.parsed_values.status in ["入庫持ち出し申請中", "入庫持ち出し譲渡申請中", "持ち出し申請中", "持ち出し譲渡申請中"] %}
+                        <tr><th>持ち出し開始日</th><td>{{ item.parsed_values.checkout_start_date|default('') }}</td></tr>
+                        <tr><th>持ち出し終了日</th><td>{{ item.parsed_values.checkout_end_date|default('') }}</td></tr>
                         <tr>
-                            <th>持ち出し開始日</th>
-                            <td>{{ item.parsed_values.checkout_start_date|default('') }}</td>
-                        </tr>
-                        <tr>
-                            <th>持ち出し終了日</th>
-                            <td>{{ item.parsed_values.checkout_end_date|default('') }}</td>
-                        </tr>
-                        <tr>
-                        <th>所有者リスト</th>
-                        <td>
+                          <th>所有者リスト</th>
+                          <td>
                             {% if item.owner_pairs and item.owner_pairs|length > 0 %}
-                            <table style="border-collapse: collapse; font-size: 90%; margin-left: 10px;">
+                              <table style="border-collapse: collapse; font-size: 90%; margin-left: 10px;">
                                 <tr><th>枝番</th><th>所有者</th></tr>
                                 {% for b, owner in item.owner_pairs %}
-                                <tr>
-                                <td style="padding: 2px 8px;">{{ b }}</td>
-                                <td style="padding: 2px 8px;">{{ owner }}</td>
-                                </tr>
+                                  <tr>
+                                    <td style="padding: 2px 8px;">{{ b }}</td>
+                                    <td style="padding: 2px 8px;">{{ show(owner) }}</td> {# ★ 置換 #}
+                                  </tr>
                                 {% endfor %}
-                            </table>
+                              </table>
                             {% else %}
-                            （なし）
+                              （なし）
                             {% endif %}
-                        </td>
+                          </td>
                         </tr>
                     {% endif %}
-                    {% if item.parsed_values.status == "入庫持ち出し譲渡申請中" or item.parsed_values.status == "持ち出し譲渡申請中" %}
-                        <tr>
-                            <th>譲渡枝番</th>
-                            <td>
-                            {% if item.parsed_values.transfer_branch_nos %}
-                                {{ item.parsed_values.transfer_branch_nos | join(', ') }}
-                            {% else %}
-                                （なし）
-                            {% endif %}
-                            </td>
-                        </tr>
-                        <tr>
-                            <th>譲渡日</th>
-                            <td>{{ item.parsed_values.transfer_date|default('') }}</td>
-                        </tr>
-                        <tr>
-                            <th>譲渡コメント</th>
-                            <td>{{ item.parsed_values.transfer_comment|default('') }}</td>
-                        </tr>
+
+                    {% if item.parsed_values.status in ["入庫持ち出し譲渡申請中", "持ち出し譲渡申請中"] %}
+                        <tr><th>譲渡枝番</th><td>
+                          {% if item.parsed_values.transfer_branch_nos %}
+                            {{ item.parsed_values.transfer_branch_nos | join(', ') }}
+                          {% else %}（なし）{% endif %}
+                        </td></tr>
+                        <tr><th>譲渡日</th><td>{{ item.parsed_values.transfer_date|default('') }}</td></tr>
+                        <tr><th>譲渡コメント</th><td>{{ item.parsed_values.transfer_comment|default('') }}</td></tr>
                     {% endif %}
+
                     {% if item.parsed_values.status == "破棄・譲渡申請中" %}
+                        <tr><th>種別</th><td>{{ item.parsed_values.dispose_type }}</td></tr>
                         <tr>
-                            <th>種別</th>
-                            <td>{{ item.parsed_values.dispose_type }}</td>
-                        </tr>
-                        <tr>
-                            <th>対象枝番</th>
-                            <td>
+                          <th>対象枝番</th>
+                          <td>
                             {% if item.parsed_values.target_child_branches %}
-                                <ul>
+                              <ul>
                                 {% for child in item.parsed_values.target_child_branches %}
-                                <li>
+                                  <li>
                                     {% if child.branch_no is defined %}
-                                    枝番: {{ child.branch_no }}（子ID: {{ child.id }}）
+                                      枝番: {{ child.branch_no }}（子ID: {{ child.id }}）
                                     {% else %}
-                                    子ID: {{ child.id }}
+                                      子ID: {{ child.id }}
                                     {% endif %}
-                                </li>
+                                  </li>
                                 {% endfor %}
-                                </ul>
-                            {% else %}
-                                （なし）
-                            {% endif %}
-                            </td>
+                              </ul>
+                            {% else %}（なし）{% endif %}
+                          </td>
                         </tr>
-                        <tr>
-                            <th>対応者</th>
-                            <td>{{ item.parsed_values.handler }}</td>
-                        </tr>
-                        <tr>
-                            <th>破棄・譲渡日</th>
-                            <td>{{ item.parsed_values.dispose_date|default('') }}</td>
-                        </tr>
-                        <tr>
-                            <th>破棄・譲渡コメント</th>
-                            <td>{{ item.parsed_values.dispose_comment }}</td>
-                        </tr>
+                        <tr><th>対応者</th><td>{{ show(item.parsed_values.handler) }}</td></tr> {# ★ 置換 #}
+                        <tr><th>破棄・譲渡日</th><td>{{ item.parsed_values.dispose_date|default('') }}</td></tr>
+                        <tr><th>破棄・譲渡コメント</th><td>{{ item.parsed_values.dispose_comment }}</td></tr>
                     {% endif %}
+
                     {% if item.parsed_values.status == "返却申請中" %}
-                        <tr>
-                            <th>返却確認日</th>
-                            <td>{{ item.parsed_values.return_date|default('') }}</td>
-                        </tr>
-                    {% endif %}                            
+                        <tr><th>返却確認日</th><td>{{ item.parsed_values.return_date|default('') }}</td></tr>
+                    {% endif %}
                 </table>
             </td>
+
             <td>{{ item['applicant_comment'] }}</td>
             <td>{{ item['application_datetime'] }}</td>
             <td>{{ item['status'] }}</td>
         </tr>
         {% endfor %}
+
         <tr>
-            <th>
-              <input type="checkbox" id="select_all_bottom"
-                     onclick="toggleAll(this.checked);">
-            </th>
+            <th><input type="checkbox" id="select_all_bottom" onclick="toggleAll(this.checked);"></th>
             <th>履歴ID</th>
             <th>通し番号</th>
             <th>申請者</th>
@@ -231,6 +209,7 @@
             <th>現在ステータス</th>
         </tr>
     </table>
+
     <div style="margin-top:15px;">
         <label for="approve_comment"><b>承認/差し戻しコメント:</b></label><br>
         <textarea id="approve_comment" name="approve_comment" class="comment-box" rows="3" placeholder="コメントを入力"></textarea>
@@ -242,7 +221,5 @@
     </div>
 </form>
 {% endif %}
-<div>
-  <a href="{{ url_for('index') }}">一覧に戻る</a>
-</div>
+<div><a href="{{ url_for('index') }}">一覧に戻る</a></div>
 {% endblock %}

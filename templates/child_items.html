@@ -64,7 +64,18 @@
         <td>{{ ci['item_id'] }}</td>
         <td>{{ item_map[ci['item_id']]['product_name'] if ci['item_id'] in item_map else '' }}</td>
         <td>{{ ci['branch_no'] }}</td>
-        <td>{{ ci['owner'] }}</td>
+        <td>
+            {% if ci['owner'] %}
+                {% set p = profiles.get(ci['owner']) %}
+                {% if p %}
+                    {{ (p.get('department','') ~ ' ' ~ p.get('realname','')).strip() }}
+                {% else %}
+                    {{ ci['owner'] }}
+                {% endif %}
+            {% else %}
+                {{ '' }}
+            {% endif %}
+        </td>
         <td class="nowrap">{{ ci['transfer_dispose_date'] or '' }}</td>
         <td>{{ ci['status'] }}</td>
         <td>{{ ci['comment'] }}</td>

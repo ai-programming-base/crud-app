@@ -1236,6 +1236,14 @@ def checkout_request():
         )
         approver_default = sorted_managers[0]['username'] if sorted_managers else ''
 
+        # ★ index と同じ realname 優先の表示名マップ
+        user_rows = db.execute("""
+            SELECT username,
+                   COALESCE(NULLIF(realname, ''), username) AS display_name
+            FROM users
+        """).fetchall()
+        user_display = {r["username"]: r["display_name"] for r in user_rows}
+
         return render_template(
             'checkout_form.html',
             items=items, fields=INDEX_FIELDS,
@@ -1244,6 +1252,7 @@ def checkout_request():
             proper_users=proper_users_json,
             owner_candidates=owner_candidates,
             manager_default=manager_default,
+            user_display=user_display,
             g=g,
         )
 
@@ -1465,6 +1474,15 @@ def checkout_request():
 @roles_required('admin', 'manager', 'proper')
 def return_request():
     db = get_db()
+
+    # realname 優先の表示名マップ（indexと同じ）
+    user_rows = db.execute("""
+        SELECT username,
+            COALESCE(NULLIF(realname, ''), username) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
     # 申請フォーム表示（POST:選択済みID受取→フォーム表示）
     if request.method == 'POST':
         item_ids = request.form.getlist('selected_ids')
@@ -1508,7 +1526,8 @@ def return_request():
             'return_form.html',
             items=item_list, fields=INDEX_FIELDS,
             approver_default=approver_default,
-            approver_list=sorted_managers
+            approver_list=sorted_managers,
+            user_display=user_display,
         )
 
     # 申請フォームからの送信時（GET, action=submit）
@@ -1770,6 +1789,18 @@ def approval():
         
     items = parsed_items
 
+    # ★ department realname 表示名マップ（realname 空なら username を使用）
+    user_rows = db.execute("""
+        SELECT
+            username,
+            TRIM(
+                COALESCE(NULLIF(department,''),'') || ' ' ||
+                COALESCE(NULLIF(realname,''), username)
+            ) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
     if request.method == 'POST':
         selected_ids = request.form.getlist('selected_ids')
         comment = request.form.get('approve_comment', '').strip()
@@ -1792,7 +1823,7 @@ def approval():
                 except Exception:
                     parsed['parsed_values'] = {}
                 parsed_items.append(parsed)
-            return render_template('approval.html', items=parsed_items, fields=INDEX_FIELDS)
+            return render_template('approval.html', items=parsed_items, fields=INDEX_FIELDS, user_display=user_display)
 
         for app_id in selected_ids:
             app_row = db.execute("SELECT * FROM item_application WHERE id=?", (app_id,)).fetchone()
@@ -2058,7 +2089,7 @@ def approval():
         # 完了後は空リスト＋メッセージ表示
         return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="処理が完了しました", finish=True)
 
-    return render_template('approval.html', items=items, fields=INDEX_FIELDS)
+    return render_template('approval.html', items=items, fields=INDEX_FIELDS, user_display=user_display)
 
 
 @app.route('/child_items')
@@ -2137,13 +2168,18 @@ def child_items_multiple():
             'checkout_end_date': r['checkout_end_date'],
         })
 
+    # ▼ 所有者プロフィールを用意（表示用）
+    owner_usernames = list({ci['owner'] for ci in child_items if ci['owner']})
+    profiles = get_user_profiles(db, owner_usernames)  # dict[username] -> {department, realname, ...}
+
     return render_template(
         'child_items.html',
         child_items=child_items,
         item_map=item_map,
         items=items,
         fields=INDEX_FIELDS,
-        checkout_histories=checkout_histories
+        checkout_histories=checkout_histories,
+        profiles=profiles,
     )
 
 
@@ -2170,14 +2206,24 @@ def bulk_manager_change():
         } for u in proper_users
     ]
 
+    # ▼ 一覧表示用に現在の管理者プロフィールを取得（表示フォーマット：department realname）
+    current_manager_usernames = list({item['sample_manager'] for item in items})
+    display_profiles = get_user_profiles(db, current_manager_usernames)
+
     if request.method == 'POST':
         new_manager = request.form.get('new_manager', '').strip()
         if not new_manager or new_manager not in proper_usernames:
+            # ← エラー表示時も profiles を渡す（テンプレでフォーマットに利用）
             items = db.execute(f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(id_list))})", id_list).fetchall()
+            current_manager_usernames = list({item['sample_manager'] for item in items})
+            display_profiles = get_user_profiles(db, current_manager_usernames)
+
             return render_template(
                 'bulk_manager_change.html',
                 items=items, ids=ids_str,
                 proper_users=proper_users_json,
+                manager_default=g.user['username'],
+                profiles=display_profiles,
                 error_message="管理者は候補から選択してください。"
             )
 
@@ -2194,7 +2240,7 @@ def bulk_manager_change():
         profiles = get_user_profiles(db, usernames_to_fetch)
 
         new_prof = profiles.get(new_manager, {"email": "", "realname": "", "department": ""})
-        old_profs = [profiles[u] for u in old_managers]
+        old_profs = [profiles[u] for u in old_managers if u in profiles]
 
         # 宛先: 旧管理者全員 + 新管理者 + 操作した本人
         to_emails = {p["email"] for p in old_profs if p.get("email")}
@@ -2206,7 +2252,6 @@ def bulk_manager_change():
         if changer_prof.get("email"):
             to_emails.add(changer_prof["email"])
         
-        # 件名と本文（必要に応じて整形）
         subject = f"[通知] 管理者一括変更 ({len(items)}件)"
         body = render_template(
             "mails/manager_change.txt",
@@ -2236,6 +2281,7 @@ def bulk_manager_change():
         items=items, ids=ids_str,
         proper_users=proper_users_json,
         manager_default=manager_default,
+        profiles=display_profiles,
         error_message=None
     )
 
@@ -2256,10 +2302,24 @@ def my_applications():
         WHERE {where}
         ORDER BY application_datetime DESC
     """, params).fetchall()
+
+    # ★ department realname 形式（realname が空なら username を使う）
+    user_rows = db.execute("""
+        SELECT
+            username,
+            TRIM(
+                COALESCE(NULLIF(department,''),'') || ' ' ||
+                COALESCE(NULLIF(realname,''), username)
+            ) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
     return render_template(
         'my_applications.html',
         applications=apps,
-        status=status
+        status=status,
+        user_display=user_display,
     )
 
 @app.template_filter('loadjson')
@@ -2308,14 +2368,18 @@ def change_owner():
         target_ids
     ).fetchall()
 
-    # 編集画面
+    # ★ GET: 一覧表示用に「現在の所有者」のプロフィールを用意
     if request.method == 'GET':
+        current_owner_usernames = [ci['owner'] for ci in child_items if ci['owner']]
+        owner_profiles = get_user_profiles(db, list(set(current_owner_usernames)))  # dict[username] -> {department, realname, ...}
+
         return render_template(
             'change_owner.html',
             items=items,
             child_items=child_items,
             ids=','.join(str(i) for i in target_ids),
             owner_candidates=owner_candidates,
+            profiles=owner_profiles,
         )
 
     # POST: 変更反映
@@ -2451,6 +2515,26 @@ def dispose_transfer_request():
     ]
     handler_default = g.user['username']
 
+    # index と同じ realname 優先の表示名マップ
+    user_rows = db.execute("""
+        SELECT username,
+            COALESCE(NULLIF(realname, ''), username) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
+    #（所有者用：department + realname 形式／realname 空なら username）
+    user_rows2 = db.execute("""
+        SELECT
+            username,
+            TRIM(
+                COALESCE(NULLIF(department,''),'') || ' ' ||
+                COALESCE(NULLIF(realname,''), username)
+            ) AS display_name
+        FROM users
+    """).fetchall()
+    user_display_dept = {r["username"]: r["display_name"] for r in user_rows2}
+
     # POST: 申請フォーム送信
     if request.method == 'POST' and request.form.get('action') == 'submit':
         item_ids = request.form.getlist('item_id')
@@ -2520,7 +2604,9 @@ def dispose_transfer_request():
                 approver_default=approver_default,
                 approver_list=sorted_managers,
                 proper_users=proper_users_json,
-                handler_default=handler_default
+                handler_default=handler_default,
+                user_display=user_display,
+                user_display_dept=user_display_dept
             )
 
         applicant = g.user['username']
@@ -2695,7 +2781,9 @@ def dispose_transfer_request():
             approver_default=approver_default,
             approver_list=sorted_managers,
             proper_users=proper_users_json,
-            handler_default=handler_default
+            handler_default=handler_default,
+            user_display=user_display,
+            user_display_dept=user_display_dept
         )
 
     return redirect(url_for('index'))
@@ -2750,7 +2838,18 @@ def inventory_list():
         # partnerや他ロールはここで制御
         items = []
 
-    return render_template('inventory_list.html', items=items, fields=INDEX_FIELDS)
+    # ★ index と同じ realname 優先の表示名マップ
+    user_rows = db.execute("""
+        SELECT username,
+               COALESCE(NULLIF(realname, ''), username) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
+    return render_template('inventory_list.html',
+                           items=items,
+                           fields=INDEX_FIELDS,
+                           user_display=user_display)
 
 
 @app.route('/inventory_check', methods=['POST'])
@@ -2775,6 +2874,8 @@ def inventory_check():
 @roles_required('admin', 'manager', 'proper')
 def inventory_history(item_id):
     db = get_db()
+
+    # 履歴とアイテム本体
     rows = db.execute(
         "SELECT * FROM inventory_check WHERE item_id=? ORDER BY checked_at DESC",
         (item_id,)
@@ -2782,7 +2883,25 @@ def inventory_history(item_id):
     item = db.execute(
         "SELECT * FROM item WHERE id=?", (item_id,)
     ).fetchone()
-    return render_template('inventory_history.html', rows=rows, item=item)
+
+    # ★ department realname 形式（realname が空なら username で補完）
+    user_rows = db.execute("""
+        SELECT
+            username,
+            TRIM(
+                COALESCE(NULLIF(department,''),'') || ' ' ||
+                COALESCE(NULLIF(realname,''), username)
+            ) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
+    return render_template(
+        'inventory_history.html',
+        rows=rows,
+        item=item,
+        user_display=user_display,
+    )
 
 
 @app.route('/print_labels', methods=['GET', 'POST'])
@@ -2824,6 +2943,8 @@ def print_labels():
 def bulk_edit():
     """
     index から選択したID群を ?ids=1,2,3 で受けてロック→編集画面へ。
+    画面表示で sample_manager を index と同じ user_display マップで表示するため、
+    users テーブルから display_name を構築してテンプレへ渡す。
     """
     ids_raw = request.args.get('ids', '')
     ids = [s for s in ids_raw.split(',') if s.strip()]
@@ -2833,23 +2954,36 @@ def bulk_edit():
 
     db = get_db()
 
+    # 他ユーザーによる編集中チェック＆ロック取得
     ok, blocked = acquire_locks(db, ids, g.user['username'])
     if not ok:
         flash("以下のIDは他ユーザーが編集中のため編集できません: " + ", ".join(blocked))
         return redirect(url_for('index'))
 
+    # ★ index と同じ user_display を作成
+    user_rows = db.execute("""
+        SELECT
+            username,
+            COALESCE(NULLIF(realname, ''), username) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
     # 編集対象の取得（index と同じ項目セット）
     user_field_keys = [f['key'] for f in FIELDS if not f.get('internal', False) and f.get('show_in_index', True)]
-    # ID/サンプル数も index と同様に表示するため全列を取得
-    placeholders = ",".join(["?"]*len(ids))
-    rows = db.execute(f"SELECT * FROM item WHERE id IN ({placeholders}) ORDER BY id DESC", ids).fetchall()
+    placeholders = ",".join(["?"] * len(ids))
+    rows = db.execute(
+        f"SELECT * FROM item WHERE id IN ({placeholders}) ORDER BY id DESC",
+        ids
+    ).fetchall()
     items = [dict(r) for r in rows]
 
     return render_template(
         'edit.html',
         items=items,
-        fields=[f for f in FIELDS if f.get('show_in_index', True)],  # index と同じ表示項目
+        fields=[f for f in FIELDS if f.get('show_in_index', True)],
         user_field_keys=user_field_keys,
+        user_display=user_display,
     )
 
 @app.route('/bulk_edit/commit', methods=['POST'])

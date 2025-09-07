@@ -66,10 +66,15 @@
             <td class="col-checkbox"><input type="checkbox" class="rowcheck" name="selected_ids" value="{{ item['id'] }}"></td>
             <td class="col-id">{{ item['id'] }}</td>
             {% for field in fields %}
-              <td>{{ item[field.key] }}</td>
+              {% if field.key == 'sample_manager' %}
+                <td>{{ user_display.get(item[field.key], item[field.key]) }}</td>
+              {% else %}
+                <td>{{ item[field.key] }}</td>
+              {% endif %}
             {% endfor %}
             <td>{{ item['last_checked_at'] or '-' }}</td>
-            <td>{{ item['last_checker'] or '-' }}</td>
+            {% set lc = item['last_checker'] %}
+            <td>{{ user_display.get(lc, lc) if lc else '-' }}</td>
             <td>
               <a href="{{ url_for('inventory_history', item_id=item['id']) }}" style="color:#3161c4;text-decoration:underline;">履歴</a>
             </td>
