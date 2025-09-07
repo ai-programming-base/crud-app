@@ -109,7 +109,7 @@ def roles_required(*roles):
             user_roles = getattr(g, 'user_roles', [])
             if not any(role in user_roles for role in roles):
                 flash('権限がありません')
-                return redirect(url_for('index'))  # _urlfor_compat がテンプレで効いていればOK
+                return redirect(url_for('index_bp.index'))  # _urlfor_compat がテンプレで効いていればOK
             return func(*args, **kwargs)
         return wrapper
     return decorator
