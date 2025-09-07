@@ -79,9 +79,6 @@
 {% endif %}
 {% if not finish %}
 <form method="post">
-    {% if request.args.get('from_menu') %}
-        <input type="hidden" name="from_menu" value="1">
-    {% endif %}
     <table>
         <tr>
             <th><input type="checkbox" id="select_all_top" onclick="toggleAll(this.checked);"></th>
@@ -104,10 +101,16 @@
             <td>{{ show(item['applicant']) }}</td>
 
             <td>
-                {% if item.parsed_values.status == "入庫持ち出し申請中" %}
-                    入庫持ち出し申請
-                {% elif item.parsed_values.status == "入庫申請中" %}
+                {% if item.parsed_values.status == "入庫申請中" %}
                     入庫申請
+                {% elif item.parsed_values.status == "入庫持ち出し申請中" %}
+                    入庫持ち出し申請
+                {% elif item.parsed_values.status == "入庫持ち出し譲渡申請中" %}
+                    入庫持ち出し譲渡申請
+                {% elif item.parsed_values.status == "持ち出し申請中" %}
+                    持ち出し申請
+                {% elif item.parsed_values.status == "持ち出し譲渡申請中" %}
+                    持ち出し譲渡申請
                 {% elif item.parsed_values.status == "返却申請中" %}
                     返却申請
                 {% elif item.parsed_values.status == "破棄・譲渡申請中" %}
@@ -217,9 +220,9 @@
     <div class="button-group">
         <button type="submit" name="action" value="approve" class="approve" onclick="return onApprove();">承認</button>
         <button type="submit" name="action" value="reject" class="reject" onclick="return onReject();">差し戻し</button>
-        <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="main-btn" style="background:#aaa;">キャンセル</a>
+        <a href="{{ url_for('index_bp.index') }}" class="main-btn" style="background:#aaa;">キャンセル</a>
     </div>
 </form>
 {% endif %}
-<div><a href="{{ url_for('index') }}">一覧に戻る</a></div>
+<div><a href="{{ url_for('index_bp.index') }}">一覧に戻る</a></div>
 {% endblock %}

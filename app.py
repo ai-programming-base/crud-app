@@ -34,6 +34,8 @@ app.register_blueprint(index_bp)
 from blueprints.checkout_bp import checkout_bp
 app.register_blueprint(checkout_bp)
 
+from blueprints.approval_bp import approval_bp
+app.register_blueprint(approval_bp)
 
 from flask import url_for as _flask_url_for
 @app.context_processor
@@ -43,6 +45,7 @@ def _urlfor_compat():
         mapping = {
             'index': 'index_bp.index',
             'checkout_request': 'checkout_bp.checkout_request',
+            'approval': 'approval_bp.approval',
             # 将来BP化したらここに足していく:
             # 'login': 'auth_bp.login',
             # 'menu':  'menu_bp.menu',
@@ -249,7 +252,7 @@ def login():
                 user_id = db.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()['id']
                 db.commit()
             session['user_id'] = user_id
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
         else:
             flash(auth_result.get('reason') or "ログインに失敗しました")
     return render_template('login.html')
@@ -372,7 +375,7 @@ def edit_user(user_id):
     user = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
     if not user:
         flash("対象ユーザーが見つかりません")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
     # 全ロール
     roles = db.execute("SELECT id, name FROM roles").fetchall()
@@ -491,7 +494,7 @@ def raise_request():
             if request.form.get('from_menu') or request.args.get('from_menu'):
                 return redirect(url_for('menu'))
             else:
-                return redirect(url_for('index'))
+                return redirect(url_for('index_bp.index'))
 
     # --- GET時（コピーして起票サポート）---
     # パラメータでcopy_idが来たら、そのIDの値を初期値に使う
@@ -519,7 +522,7 @@ def delete_selected():
     if request.form.get('from_menu') or request.args.get('from_menu'):
         return redirect(url_for('menu'))
     else:
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
 
 @app.route('/entry_request', methods=['POST', 'GET'])
@@ -555,7 +558,7 @@ def entry_request():
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
             flash("申請対象を選択してください")
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
@@ -592,7 +595,7 @@ def entry_request():
         item_ids = form.getlist('item_id')
         if not item_ids:
             flash("申請対象が不正です")
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
 
         # 必須入力チェック
         manager = form.get('manager', '').strip()
@@ -816,9 +819,9 @@ def entry_request():
         if request.form.get('from_menu') or request.args.get('from_menu'):
             return redirect(url_for('menu'))
         else:
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
 
-    return redirect(url_for('index'))
+    return redirect(url_for('index_bp.index'))
 
 
 @app.route('/return_request', methods=['POST', 'GET'])
@@ -840,14 +843,14 @@ def return_request():
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
             flash("申請対象を選択してください")
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
         not_accepted = [str(row['id']) for row in items if row['status'] != "持ち出し中"]
         if not_accepted:
             flash(f"持ち出し中でないアイテム（ID: {', '.join(not_accepted)}）は持ち出し終了申請できません。")
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
 
         item_list = []
         for item in items:
@@ -888,7 +891,7 @@ def return_request():
         checkeds = request.args.getlist('qty_checked')
         if not checkeds or len(checkeds) != len(item_ids):
             flash("全ての数量チェックを確認してください")
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
 
         applicant = g.user['username']
         applicant_comment = request.args.get('comment', '')
@@ -971,477 +974,9 @@ def return_request():
         if request.args.get('from_menu') or request.form.get('from_menu'):
             return redirect(url_for('menu'))
         else:
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
     
-    return redirect(url_for('index'))
-
-
-def build_application_mail(db, app_row, action: str, approver_comment: str = "") -> tuple[str, str, str]:
-    """
-    item_application の1件 (app_row) と action ('approve' | 'reject') から
-    (to, subject, body) を返す。
-    """
-    # sqlite3.Row -> dict に変換して .get を安全に使えるようにする
-    if not isinstance(app_row, dict):
-        app_row = dict(app_row)
-
-    item_id = app_row["item_id"]
-    approver = app_row["approver"]                  # username
-    applicant = app_row["applicant"]                # username
-    try:
-        new_values = json.loads(app_row.get("new_values") or "{}")
-    except Exception:
-        new_values = {}
-    status = (new_values.get("status") or "").strip()
-
-    # 申請側で指定された管理者（なければ item テーブルから補完）
-    manager_username = (new_values.get("sample_manager") or "").strip()
-    if not manager_username:
-        row = db.execute("SELECT sample_manager FROM item WHERE id=?", (item_id,)).fetchone()
-        manager_username = (row["sample_manager"] if row and row["sample_manager"] else "").strip()
-
-    # 所有者を宛先に含めるタイプか？
-    include_owners = status in (
-        "入庫持ち出し申請中", "入庫持ち出し譲渡申請中",
-        "持ち出し申請中", "持ち出し譲渡申請中"
-    )
-    owners = list(new_values.get("owner_list") or []) if include_owners else []
-
-    # プロフィール取得
-    usernames = {approver, applicant}
-    if manager_username:
-        usernames.add(manager_username)
-    if include_owners:
-        usernames |= set([u for u in owners if u])
-
-    profiles = get_user_profiles(db, list(usernames))
-    approver_prof  = profiles.get(approver,  {})
-    applicant_prof = profiles.get(applicant, {})
-    manager_prof   = profiles.get(manager_username, {}) if manager_username else {}
-    owner_profs    = [profiles[u] for u in sorted(set([u for u in owners if u]))] if include_owners else []
-
-    # 宛先（重複除去）
-    to_emails = set()
-    for p in [approver_prof, applicant_prof, manager_prof] + owner_profs:
-        if isinstance(p, dict) and p.get("email"):
-            to_emails.add(p["email"])
-    to = ",".join(sorted(to_emails))
-
-    # 件名
-    action_label = "承認" if action == "approve" else "差し戻し"
-    kind = (
-        "入庫持ち出し譲渡申請" if status == "入庫持ち出し譲渡申請中" else
-        "入庫持ち出し申請"     if status == "入庫持ち出し申請中" else
-        "入庫申請"             if status == "入庫申請中" else
-        "持ち出し譲渡申請"       if status == "持ち出し譲渡申請中" else
-        "持ち出し申請"           if status == "持ち出し申請中" else
-        "返却申請"              if status == "返却申請中" else
-        "破棄・譲渡申請"          if status == "破棄・譲渡申請中" else
-        (status or "申請")
-    )
-    subject = f"[{action_label}] {kind}（ID: {item_id}）"
-
-    # 本文テンプレに渡すデータ
-    changes = [{
-        "item_id": item_id,
-        "manager": manager_username,   # username（本文では profiles[...] で部署/氏名に変換）
-        "owners": owners               # [username]
-    }]
-
-    body = render_template(
-        "mails/approval_result.txt",
-        approver_prof=approver_prof,
-        applicant_prof=applicant_prof,
-        manager_prof=manager_prof,
-        owner_profs=owner_profs,
-        profiles=profiles,
-        action_label=action_label,
-        kind=kind,
-        changes=changes,
-        # new_values 由来の任意項目（テンプレ側条件付き）
-        start_date=new_values.get("checkout_start_date", ""),
-        end_date=new_values.get("checkout_end_date", ""),
-        transfer_date=new_values.get("transfer_date", ""),
-        transfer_comment=new_values.get("transfer_comment", ""),
-        dispose_type=new_values.get("dispose_type", ""),
-        dispose_date=new_values.get("dispose_date", ""),
-        dispose_comment=new_values.get("dispose_comment", ""),
-        return_date=new_values.get("return_date", ""),
-        storage=new_values.get("storage", ""),
-        applicant_comment=app_row.get("applicant_comment", "") or "",
-        approver_comment=approver_comment or "",
-    )
-
-    return to, subject, body
-
-
-@app.route('/approval', methods=['GET', 'POST'])
-@login_required
-@roles_required('admin', 'manager')
-def approval():
-    db = get_db()
-    username = g.user['username']
-
-    # 承認対象リスト取得 & 申請内容をパースして渡す
-    items_raw = db.execute(
-        "SELECT * FROM item_application WHERE approver=? AND status=? ORDER BY application_datetime DESC",
-        (username, "申請中")
-    ).fetchall()
-    parsed_items = []
-    for item in items_raw:
-        parsed = dict(item)
-        try:
-            parsed['parsed_values'] = json.loads(item['new_values'])
-        except Exception:
-            parsed['parsed_values'] = {}
-
-        # ===== 所有者リストの枝番を「破棄・譲渡をスキップ」して表示用に再割当 =====
-        pv = parsed.get('parsed_values', {})
-        owners = pv.get('owner_list') or []
-        if owners:
-            item_id = parsed['item_id']
-
-            # 既存 child_item の枝番状況を取得
-            rows = db.execute(
-                "SELECT branch_no, status FROM child_item WHERE item_id=?",
-                (item_id,)
-            ).fetchall()
-            # 破棄・譲渡の枝番は使用不可
-            disposed_transferred = {r['branch_no'] for r in rows if r['status'] in ('破棄', '譲渡')}
-            occupied_alive = {r['branch_no'] for r in rows if r['status'] not in ('破棄', '譲渡')}
-
-            # 空いている「生きている枝番」を小さい順に再利用し、足りなければ新規の枝番番号を継ぎ足し
-            owner_pairs = []  # [(branch_no, owner), ...]
-            # まず再利用候補（生きている既存枝番）を昇順で
-            reuse_candidates = sorted(occupied_alive)
-            reuse_iter = iter(reuse_candidates)
-
-            # 次に新規採番開始位置（既存最大枝番の次）
-            max_existing = max([0] + [r['branch_no'] for r in rows])
-            next_branch = max_existing + 1
-
-            for owner in owners:
-                # 破棄・譲渡を避けて既存の生き枝番を優先
-                try:
-                    b = next(reuse_iter)
-                except StopIteration:
-                    # 足りなければ disposed/transferred を避けつつ新規採番
-                    while next_branch in disposed_transferred:
-                        next_branch += 1
-                    b = next_branch
-                    next_branch += 1
-
-                owner_pairs.append((b, owner))
-
-            parsed['owner_pairs'] = owner_pairs  # テンプレで使う
-        else:
-            parsed['owner_pairs'] = []
-
-        parsed_items.append(parsed)
-        
-    items = parsed_items
-
-    # ★ department realname 表示名マップ（realname 空なら username を使用）
-    user_rows = db.execute("""
-        SELECT
-            username,
-            TRIM(
-                COALESCE(NULLIF(department,''),'') || ' ' ||
-                COALESCE(NULLIF(realname,''), username)
-            ) AS display_name
-        FROM users
-    """).fetchall()
-    user_display = {r["username"]: r["display_name"] for r in user_rows}
-
-    if request.method == 'POST':
-        selected_ids = request.form.getlist('selected_ids')
-        comment = request.form.get('approve_comment', '').strip()
-        action = request.form.get('action')
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        now_date = datetime.now().strftime("%Y-%m-%d")
-
-        if not selected_ids:
-            flash("対象を選択してください")
-            # 再度リスト生成
-            items_raw = db.execute(
-                "SELECT * FROM item_application WHERE approver=? AND status=? ORDER BY application_datetime DESC",
-                (username, "申請中")
-            ).fetchall()
-            parsed_items = []
-            for item in items_raw:
-                parsed = dict(item)
-                try:
-                    parsed['parsed_values'] = json.loads(item['new_values'])
-                except Exception:
-                    parsed['parsed_values'] = {}
-                parsed_items.append(parsed)
-            return render_template('approval.html', items=parsed_items, fields=INDEX_FIELDS, user_display=user_display)
-
-        for app_id in selected_ids:
-            app_row = db.execute("SELECT * FROM item_application WHERE id=?", (app_id,)).fetchone()
-            if not app_row:
-                continue
-            item_id = app_row['item_id']
-            new_values = json.loads(app_row['new_values'])
-            status = new_values.get('status')
-
-            if action == 'approve':
-                item_columns = set(FIELD_KEYS)
-                filtered_values = {k: v for k, v in new_values.items() if k in item_columns}
-                set_clause = ", ".join([f"{k}=?" for k in filtered_values.keys()])
-                params = [filtered_values[k] for k in filtered_values.keys()]
-                if set_clause:
-                    db.execute(
-                        f'UPDATE item SET {set_clause} WHERE id=?',
-                        params + [item_id]
-                    )
-
-                approver_dept = (g.user['department'] or "").strip()
-                if status in ("入庫持ち出し譲渡申請中", "入庫持ち出し申請中", "入庫申請中"):
-                    db.execute(
-                        "UPDATE item SET approval_group=? WHERE id=?",
-                        (approver_dept, item_id)
-                    )
-
-                if status == "入庫持ち出し譲渡申請中":
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
-
-                    start_date = new_values.get("checkout_start_date", "")
-                    end_date = new_values.get("checkout_end_date", "")
-                    owners = new_values.get("owner_list", [])
-                    num_of_samples = int(new_values.get("num_of_samples", 1))
-                    if not owners:
-                        owner = new_values.get("sample_manager", "")
-                        owners = [owner] * num_of_samples
-
-                    # child_itemの作成または更新（ownerとstatusだけ）
-                    for idx, owner in enumerate(owners, 1):
-                        child_item = db.execute(
-                            "SELECT * FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
-                        ).fetchone()
-                        if not child_item:
-                            db.execute(
-                                "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
-                                (item_id, idx, owner, "持ち出し中", "")
-                            )
-                            child_item_id = db.execute(
-                                "SELECT id FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
-                            ).fetchone()["id"]
-                        else:
-                            child_item_id = child_item["id"]
-                            db.execute(
-                                "UPDATE child_item SET owner=?, status=? WHERE id=?",
-                                (owner, "持ち出し中", child_item_id)
-                            )
-
-                    # checkout_history に履歴を追加
-                    db.execute(
-                        "INSERT INTO checkout_history (item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
-                        (item_id, start_date, end_date)
-                    )
-
-                    # 指定枝番(branch_no)を譲渡済みに変更（ownerも空欄に）
-                    transfer_branch_nos = new_values.get("transfer_branch_nos", [])
-                    transfer_date = new_values.get("transfer_date", "")
-                    transfer_comment = new_values.get("transfer_comment", "")
-                    for branch_no in transfer_branch_nos:
-                        db.execute(
-                            "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=? WHERE item_id=? AND branch_no=?",
-                            ("譲渡", transfer_comment, '', transfer_date, item_id, branch_no)
-                        )
-
-                elif status == "入庫持ち出し申請中":
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
-                    start_date = new_values.get("checkout_start_date", "")
-                    end_date = new_values.get("checkout_end_date", "")
-                    owners = new_values.get("owner_list", [])
-                    if not owners:
-                        num_of_samples = int(new_values.get("num_of_samples", 1))
-                        owner = new_values.get("sample_manager", "")
-                        owners = [owner] * num_of_samples
-                    for idx, owner in enumerate(owners, 1):
-                        child_item = db.execute(
-                            "SELECT * FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
-                        ).fetchone()
-                        if not child_item:
-                            db.execute(
-                                "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
-                                (item_id, idx, owner, "持ち出し中", "")
-                            )
-                            child_item_id = db.execute(
-                                "SELECT id FROM child_item WHERE item_id=? AND branch_no=?", (item_id, idx)
-                            ).fetchone()["id"]
-                        else:
-                            child_item_id = child_item["id"]
-                            db.execute(
-                                "UPDATE child_item SET owner=?, status=? WHERE id=?",
-                                (owner, "持ち出し中", child_item_id)
-                            )
-
-                    # checkout_history に履歴を追加
-                    db.execute(
-                        "INSERT INTO checkout_history (item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
-                        (item_id, start_date, end_date)
-                    )
-
-                elif status == "入庫申請中":
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
-
-                elif status in ("持ち出し申請中", "持ち出し譲渡申請中"):
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
-                    start_date = new_values.get("checkout_start_date", "")
-                    end_date = new_values.get("checkout_end_date", "")
-
-                    owners = new_values.get("owner_list", [])
-                    if not owners:
-                        num_of_samples = int(new_values.get("num_of_samples", 1))
-                        owner_fallback = new_values.get("sample_manager", "")
-                        owners = [owner_fallback] * num_of_samples
-
-                    # 既存の child_item 取得
-                    rows = db.execute(
-                        "SELECT branch_no, status FROM child_item WHERE item_id=? ORDER BY branch_no",
-                        (item_id,)
-                    ).fetchall()
-
-                    if not rows:
-                        # 0レコードなら新規作成（1..N）
-                        for idx, owner in enumerate(owners, 1):
-                            db.execute(
-                                "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
-                                (item_id, idx, owner, "持ち出し中", "")
-                            )
-                    else:
-                        # 1件でもあれば追加しない（UPDATEのみ）
-                        alive = [r["branch_no"] for r in rows if r["status"] not in ("破棄","譲渡")]
-
-                        # 生き枝番が owners より少なければ、この申請は不整合なのでスキップ（全体は継続）
-                        if len(owners) > len(alive):
-                            flash(f"通し番号 {item_id}: 生きている枝番（{len(alive)}）より所有者が多い（{len(owners)}）ため、追加は行わず更新できません。")
-                            continue
-
-                        # 小さい順に一度ずつ割り当てて UPDATE（破棄/譲渡は据え置き）
-                        for branch_no, owner in zip(alive, owners):
-                            db.execute(
-                                """
-                                UPDATE child_item
-                                SET owner  = CASE WHEN status IN (?, ?) THEN owner ELSE ? END,
-                                    status = CASE WHEN status IN (?, ?) THEN status ELSE ? END
-                                WHERE item_id=? AND branch_no=?
-                                """,
-                                ("破棄","譲渡", owner, "破棄","譲渡", "持ち出し中", item_id, branch_no)
-                            )
-                        # ※ owners が alive より少ない場合、余った枝番は触らず据え置き
-
-                    # 履歴
-                    db.execute(
-                        "INSERT INTO checkout_history (item_id, checkout_start_date, checkout_end_date) VALUES (?, ?, ?)",
-                        (item_id, start_date, end_date)
-                    )
-
-                    # 譲渡申請時の譲渡済処理（ownerも空欄に）
-                    if status == "持ち出し譲渡申請中":
-                        transfer_branch_nos = new_values.get("transfer_branch_nos", [])
-                        transfer_date = new_values.get("transfer_date", "")
-                        transfer_comment = new_values.get("transfer_comment", "")
-                        for branch_no in transfer_branch_nos:
-                            db.execute(
-                                "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=? WHERE item_id=? AND branch_no=?",
-                                ("譲渡", transfer_comment, '', transfer_date, item_id, branch_no)
-                            )
-
-                elif status == "返却申請中":
-                    db.execute(
-                        "UPDATE item SET status=?, storage=? WHERE id=?",
-                        ("入庫", new_values.get("storage", ""), item_id)
-                    )
-                    # 返却対象の child_item を「返却済」に（ownerも空欄に）
-                    db.execute(
-                        """
-                        UPDATE child_item
-                        SET status=?, owner=?
-                        WHERE item_id=? AND status NOT IN (?, ?)
-                        """,
-                        ("返却済", '', item_id, "破棄", "譲渡")
-                    )
-                    # 履歴にも返却を追加する場合はこちらで処理（例: checkout_end_date記録など）
-
-                elif status == "破棄・譲渡申請中":
-                    dispose_type = new_values.get('dispose_type')
-                    target_child_branches = new_values.get('target_child_branches', [])
-                    transfer_dispose_date = new_values.get("dispose_date", "")
-                    dispose_comment = new_values.get('dispose_comment', '')
-
-                    new_status = "破棄" if dispose_type == "破棄" else "譲渡"
-                    for target in target_child_branches:
-                        cid = target["id"]
-                        db.execute(
-                            "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=?  WHERE id=?",
-                            (new_status, dispose_comment, '', transfer_dispose_date, cid)  # ownerも空欄に
-                        )
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
-
-                # item_applicationのstatusを承認に
-                db.execute('''
-                    UPDATE item_application SET
-                        approver_comment=?, approval_datetime=?, status=?
-                    WHERE id=?
-                ''', (comment, now_str, "承認", app_id))
-
-                # application_historyにも履歴を登録
-                db.execute('''
-                    INSERT INTO application_history
-                    (item_id, applicant, application_content, applicant_comment, application_datetime, approver, status, approval_datetime, approver_comment)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    item_id, app_row['applicant'],
-                    "入庫持ち出し譲渡申請" if status == "入庫持ち出し譲渡申請中"
-                    else "持ち出し譲渡申請" if status == "持ち出し譲渡申請中"
-                    else "破棄申請" if status == "破棄・譲渡申請中" and new_values.get("dispose_type") == "破棄"
-                    else "譲渡申請" if status == "破棄・譲渡申請中" and new_values.get("dispose_type") == "譲渡"
-                    else "入庫申請" if status == "入庫申請中"
-                    else "入庫持ち出し申請" if status == "入庫持ち出し申請中"
-                    else "持ち出し申請" if status == "持ち出し申請中"
-                    else "持ち出し終了申請" if status == "返却申請中"
-                    else (app_row['new_values'] or status or ""),
-                    app_row['applicant_comment'], app_row['application_datetime'], app_row['approver'],
-                    "承認", now_str, comment
-                ))
-
-                # メール通知
-                to, subject, body = build_application_mail(db, app_row, action="approve", approver_comment=comment)
-                result = send_mail(to=to, subject=subject, body=body)
-                if result:
-                    flash("承認しました。関係者にメールで連絡しました。")
-                else:
-                    flash("承認しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
-
-            elif action == 'reject':
-                original_status = app_row['original_status']
-                if original_status:
-                    db.execute("UPDATE item SET status=? WHERE id=?", (original_status, item_id))
-                db.execute(
-                    '''
-                    UPDATE item_application SET
-                        approver_comment=?, approval_datetime=?, status=?
-                    WHERE id=?
-                    ''',
-                    (comment, now_str, "差し戻し", app_id)
-                )
-
-                # メール通知
-                to, subject, body = build_application_mail(db, app_row, action="reject", approver_comment=comment)
-                result = send_mail(to=to, subject=subject, body=body)
-                if result:
-                    flash("差し戻しました。関係者にメールで連絡しました。")
-                else:
-                    flash("差し戻しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
-
-        db.commit()
-        # 完了後は空リスト＋メッセージ表示
-        return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="処理が完了しました", finish=True)
-
-    return render_template('approval.html', items=items, fields=INDEX_FIELDS, user_display=user_display)
+    return redirect(url_for('index_bp.index'))
 
 
 @app.route('/child_items')
@@ -1451,15 +986,15 @@ def child_items_multiple():
     ids_str = request.args.get('ids', '')
     if not ids_str:
         flash("通し番号が指定されていません")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
     try:
         id_list = [int(i) for i in ids_str.split(',') if i.isdigit()]
     except Exception:
         flash("不正なID指定")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
     if not id_list:
         flash("通し番号が指定されていません")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
     db = get_db()
 
@@ -1542,7 +1077,7 @@ def bulk_manager_change():
     ids_str = request.args.get('ids') if request.method == 'GET' else request.form.get('ids')
     if not ids_str:
         flash("通し番号が指定されていません")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
     id_list = [int(i) for i in ids_str.split(',') if i.isdigit()]
     db = get_db()
@@ -1625,7 +1160,7 @@ def bulk_manager_change():
         if request.form.get('from_menu') or request.args.get('from_menu'):
             return redirect(url_for('menu'))
         else:
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
         
     manager_default = g.user['username']
     return render_template(
@@ -1704,7 +1239,7 @@ def change_owner():
     ids_str = request.args.get('ids') if request.method == 'GET' else request.form.get('ids')
     if not ids_str:
         flash("通し番号が指定されていません")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
     id_list = [int(i) for i in ids_str.split(',') if i.isdigit()]
 
     # 対象item（持ち出し中のみ）
@@ -1712,7 +1247,7 @@ def change_owner():
     target_ids = [item['id'] for item in items if item['status'] == "持ち出し中"]
     if not target_ids:
         flash("選択した中に所有者変更できるアイテムがありません（持ち出し中のみ可能）")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
     # 子アイテム取得（枝番順）
     child_items = db.execute(
@@ -1850,7 +1385,7 @@ def change_owner():
 
     else:
         flash("変更はありませんでした。")
-    return redirect(url_for('index'))
+    return redirect(url_for('index_bp.index'))
 
 
 @app.route('/dispose_transfer_request', methods=['GET', 'POST'])
@@ -2086,14 +1621,14 @@ def dispose_transfer_request():
         if request.form.get('from_menu'):
             return redirect(url_for('menu'))
         else:
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
 
     # 申請画面表示（POST/GET共通: item_idリストで遷移）
     if request.method == 'POST':
         item_ids = request.form.getlist('selected_ids')
         if not item_ids:
             flash("申請対象を選択してください")
-            return redirect(url_for('index'))
+            return redirect(url_for('index_bp.index'))
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
@@ -2138,7 +1673,7 @@ def dispose_transfer_request():
             user_display_dept=user_display_dept
         )
 
-    return redirect(url_for('index'))
+    return redirect(url_for('index_bp.index'))
 
 
 @app.route('/inventory_list')
@@ -2268,7 +1803,7 @@ def print_labels():
     ids = [int(i) for i in ids if i.isdigit()]
     if not ids:
         flash("ラベル印刷するアイテムを選択してください。")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
     db = get_db()
     items = db.execute(
@@ -2302,7 +1837,7 @@ def bulk_edit():
     ids = [s for s in ids_raw.split(',') if s.strip()]
     if not ids:
         flash("編集対象の通し番号を選択してください。")
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
     db = get_db()
 
@@ -2310,7 +1845,7 @@ def bulk_edit():
     ok, blocked = acquire_locks(db, ids, g.user['username'])
     if not ok:
         flash("以下のIDは他ユーザーが編集中のため編集できません: " + ", ".join(blocked))
-        return redirect(url_for('index'))
+        return redirect(url_for('index_bp.index'))
 
     # ★ index と同じ user_display を作成
     user_rows = db.execute("""
@@ -2355,7 +1890,7 @@ def bulk_edit_commit():
     # ロックのみ解除（statusは触らない）
     release_locks(db, [int(x) for x in ids])
     flash(f"{len(ids)}件の編集を反映しました。")
-    return redirect(url_for('index'))
+    return redirect(url_for('index_bp.index'))
 
 
 @app.route('/bulk_edit/cancel', methods=['POST'])
@@ -2367,7 +1902,7 @@ def bulk_edit_cancel():
     # 値は保存せず、ロックのみ解除（statusは触らない）
     release_locks(db, [int(x) for x in ids])
     flash("編集をキャンセルし、ロックを解除しました。")
-    return redirect(url_for('index'))
+    return redirect(url_for('index_bp.index'))
 
 
 @app.route('/unlock_my_locks', methods=['POST'])
@@ -2382,7 +1917,7 @@ def unlock_my_locks():
         flash(f"{len(ids)}件のロックを解除しました。")
     else:
         flash("解除対象のロックはありません。")
-    return redirect(url_for('index'))
+    return redirect(url_for('index_bp.index'))
 
 
 if __name__ == '__main__':
