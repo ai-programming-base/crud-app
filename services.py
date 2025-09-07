@@ -113,3 +113,91 @@ def roles_required(*roles):
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+def get_managers_by_department(department=None, db=None):
+    if db is None:
+        db = get_db()
+    query = """
+        SELECT u.username, u.realname, u.department
+        FROM users u
+        JOIN user_roles ur ON u.id = ur.user_id
+        JOIN roles r ON ur.role_id = r.id
+        WHERE r.name = 'manager'
+    """
+    params = []
+    if department:
+        query += " AND u.department = ?"
+        params.append(department)
+    query += " ORDER BY u.department, u.realname"
+    rows = db.execute(query, params).fetchall()
+    return [{'username': row['username'], 'realname': row['realname'], 'department': row['department']} for row in rows]
+
+def get_proper_users(db):
+    return [
+        dict(
+            username=row['username'],
+            realname=row['realname'],
+            department=row['department'],
+            email=row['email']
+        )
+        for row in db.execute(
+            """SELECT u.username, u.realname, u.department, u.email
+                 FROM users u
+                 JOIN user_roles ur ON u.id = ur.user_id
+                 JOIN roles r ON ur.role_id = r.id
+                WHERE r.name = 'proper'
+             ORDER BY u.department, u.username"""
+        )
+    ]
+
+def get_partner_users(db):
+    return [
+        dict(
+            username=row['username'],
+            realname=row['realname'],
+            department=row['department'],
+            email=row['email']
+        )
+        for row in db.execute(
+            """SELECT u.username, u.realname, u.department, u.email
+                 FROM users u
+                 JOIN user_roles ur ON u.id = ur.user_id
+                 JOIN roles r ON ur.role_id = r.id
+                WHERE r.name = 'partner'
+             ORDER BY u.department, u.username"""
+        )
+    ]
+
+def get_user_profile(db, username: str) -> dict:
+    row = db.execute(
+        "SELECT username, email, realname, department FROM users WHERE username = ?",
+        (username,)
+    ).fetchone()
+    if not row:
+        return {"username": username, "email": "", "realname": "", "department": ""}
+    return {
+        "username": row["username"],
+        "email": row["email"] or "",
+        "realname": row["realname"] or "",
+        "department": row["department"] or ""
+    }
+
+def get_user_profiles(db, usernames: list[str]) -> dict[str, dict]:
+    if not usernames:
+        return {}
+    placeholders = ",".join(["?"] * len(usernames))
+    rows = db.execute(
+        f"SELECT username, email, realname, department FROM users WHERE username IN ({placeholders})",
+        list(usernames)
+    ).fetchall()
+    found = {
+        r["username"]: {
+            "username": r["username"],
+            "email": r["email"] or "",
+            "realname": r["realname"] or "",
+            "department": r["department"] or ""
+        } for r in rows
+    }
+    for u in usernames:
+        found.setdefault(u, {"username": u, "email": "", "realname": "", "department": ""})
+    return found

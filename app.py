@@ -21,6 +21,8 @@ from services import (
     get_db,
     LOCK_TTL_MIN, _now, _is_lock_expired, acquire_locks, release_locks, _cleanup_expired_locks,
     login_required, roles_required,
+    get_managers_by_department, get_proper_users, get_partner_users,
+    get_user_profile, get_user_profiles,
 )
 
 app = Flask(__name__)
@@ -29,6 +31,10 @@ app.secret_key = "any_secret"
 from blueprints.index_bp import index_bp
 app.register_blueprint(index_bp)
 
+from blueprints.checkout_bp import checkout_bp
+app.register_blueprint(checkout_bp)
+
+
 from flask import url_for as _flask_url_for
 @app.context_processor
 def _urlfor_compat():
@@ -36,6 +42,7 @@ def _urlfor_compat():
         # 互換マッピング：旧 endpoint -> 新 endpoint
         mapping = {
             'index': 'index_bp.index',
+            'checkout_request': 'checkout_bp.checkout_request',
             # 将来BP化したらここに足していく:
             # 'login': 'auth_bp.login',
             # 'menu':  'menu_bp.menu',
@@ -281,104 +288,6 @@ def select_field_config():
     return render_template("select_field_config.html", fields=fields, select_fields=select_fields)
 
 
-def get_managers_by_department(department=None, db=None):
-    """
-    department指定時→その部門のmanager全員
-    department=None→全manager
-    """
-    if db is None:
-        db = get_db()
-    query = """
-        SELECT u.username, u.realname, u.department
-        FROM users u
-        JOIN user_roles ur ON u.id = ur.user_id
-        JOIN roles r ON ur.role_id = r.id
-        WHERE r.name = 'manager'
-    """
-    params = []
-    if department:
-        query += " AND u.department = ?"
-        params.append(department)
-    query += " ORDER BY u.department, u.realname"
-    rows = db.execute(query, params).fetchall()
-    return [{'username': row['username'], 'realname': row['realname'], 'department': row['department']} for row in rows]
-
-
-def get_proper_users(db):
-    return [
-        dict(
-            username=row['username'],
-            realname=row['realname'],
-            department=row['department'],
-            email=row['email']
-        )
-        for row in db.execute(
-            """SELECT u.username, u.realname, u.department, u.email
-                 FROM users u
-                 JOIN user_roles ur ON u.id = ur.user_id
-                 JOIN roles r ON ur.role_id = r.id
-                WHERE r.name = 'proper'
-             ORDER BY u.department, u.username"""
-        )
-    ]
-
-
-def get_partner_users(db):
-    return [
-        dict(
-            username=row['username'],
-            realname=row['realname'],
-            department=row['department'],
-            email=row['email']
-        )
-        for row in db.execute(
-            """SELECT u.username, u.realname, u.department, u.email
-                 FROM users u
-                 JOIN user_roles ur ON u.id = ur.user_id
-                 JOIN roles r ON ur.role_id = r.id
-                WHERE r.name = 'partner'
-             ORDER BY u.department, u.username"""
-        )
-    ]
-
-
-def get_user_profile(db, username: str) -> dict:
-    """username から email / realname / department を取得。見つからなければ空文字で返す。"""
-    row = db.execute(
-        "SELECT username, email, realname, department FROM users WHERE username = ?",
-        (username,)
-    ).fetchone()
-    if not row:
-        return {"username": username, "email": "", "realname": "", "department": ""}
-    return {
-        "username": row["username"],
-        "email": row["email"] or "",
-        "realname": row["realname"] or "",
-        "department": row["department"] or ""
-    }
-
-def get_user_profiles(db, usernames: list[str]) -> dict[str, dict]:
-    """複数 username に対応。{username: profile_dict} を返す。"""
-    if not usernames:
-        return {}
-    placeholders = ",".join(["?"] * len(usernames))
-    rows = db.execute(
-        f"SELECT username, email, realname, department FROM users WHERE username IN ({placeholders})",
-        list(usernames)
-    ).fetchall()
-    found = {
-        r["username"]: {
-            "username": r["username"],
-            "email": r["email"] or "",
-            "realname": r["realname"] or "",
-            "department": r["department"] or ""
-        } for r in rows
-    }
-    # 見つからなかったユーザーは空で埋める
-    for u in usernames:
-        found.setdefault(u, {"username": u, "email": "", "realname": "", "department": ""})
-    return found
-
 @app.route('/register', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin')
@@ -523,10 +432,6 @@ def edit_user(user_id):
                            user=user,
                            roles=roles,
                            current_role_ids=current_role_ids)
-
-
-
-
 
 @app.route('/menu')
 @login_required
@@ -906,312 +811,6 @@ def entry_request():
             flash(f"{subject_kind}を保存しました。承認待ちです。承認者ほか関係者にメールで連絡しました。")
         else:
             flash(f"{subject_kind}を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
-        # ==== ここまで ====
-
-        if request.form.get('from_menu') or request.args.get('from_menu'):
-            return redirect(url_for('menu'))
-        else:
-            return redirect(url_for('index'))
-
-    return redirect(url_for('index'))
-
-
-@app.route('/checkout_request', methods=['POST', 'GET'])
-@login_required
-@roles_required('admin', 'manager', 'proper')
-def checkout_request():
-    db = get_db()
-
-    # properユーザーリスト取得
-    proper_users = get_proper_users(db)
-    proper_usernames = [u['username'] for u in proper_users]
-    proper_users_json = [
-        {'username': u['username'], 'department': u.get('department', ''), 'realname': u.get('realname', '')}
-        for u in proper_users
-    ]
-    manager_default = g.user['username']
-
-    # partner + proper を所有者候補として統合
-    partner_users = get_partner_users(db)
-    tmp_map = {}
-    for u in (proper_users + partner_users):
-        tmp_map[u['username']] = {
-            'username': u['username'],
-            'department': u.get('department', ''),
-            'realname': u.get('realname', '')
-        }
-    owner_candidates = list(tmp_map.values())
-
-    # 申請画面表示
-    if request.method == 'POST' and not request.form.get('action'):
-        item_ids = request.form.getlist('selected_ids')
-        if not item_ids:
-            flash("申請対象を選択してください")
-            return redirect(url_for('index'))
-
-        items = db.execute(
-            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
-        ).fetchall()
-        items = [dict(row) for row in items]
-
-        # --- 利用可能枝番の付与 ---
-        from collections import defaultdict
-        placeholders = ','.join(['?'] * len(item_ids))
-        child_rows = db.execute(
-            f"SELECT item_id, branch_no, status FROM child_item WHERE item_id IN ({placeholders})",
-            item_ids
-        ).fetchall()
-
-        eligible = defaultdict(list)
-        for r in child_rows:
-            if r['status'] not in ('破棄', '譲渡'):
-                eligible[r['item_id']].append(r['branch_no'])
-
-        for it in items:
-            fallback_n = int(it.get('num_of_samples') or 1)
-            fallback_branches = list(range(1, fallback_n + 1))
-            branches = eligible.get(it['id'], fallback_branches)
-            it['available_branches'] = sorted(branches)
-            it['available_count'] = len(branches)
-
-        items = [it for it in items if it['available_count'] > 0]
-        if not items:
-            flash("申請可能な枝番が存在しません（破棄・譲渡のみ）。")
-            return redirect(url_for('index'))
-
-        # --- 承認者リスト整形 ---
-        department = g.user['department']
-        all_managers = get_managers_by_department(None, db)
-        # 並べ替え（同部門→それ以外）
-        sorted_managers = (
-            [m for m in all_managers if m['department'] == department] +
-            [m for m in all_managers if m['department'] != department]
-        )
-        approver_default = sorted_managers[0]['username'] if sorted_managers else ''
-
-        # ★ index と同じ realname 優先の表示名マップ
-        user_rows = db.execute("""
-            SELECT username,
-                   COALESCE(NULLIF(realname, ''), username) AS display_name
-            FROM users
-        """).fetchall()
-        user_display = {r["username"]: r["display_name"] for r in user_rows}
-
-        return render_template(
-            'checkout_form.html',
-            items=items, fields=INDEX_FIELDS,
-            approver_default=approver_default,
-            approver_list=sorted_managers,
-            proper_users=proper_users_json,
-            owner_candidates=owner_candidates,
-            manager_default=manager_default,
-            user_display=user_display,
-            g=g,
-        )
-
-    # 申請フォーム送信
-    if (request.method == 'GET' and request.args.get('action') == 'submit') or \
-       (request.method == 'POST' and request.form.get('action') == 'submit'):
-        form = request.form if request.method == 'POST' else request.args
-
-        item_ids = form.getlist('item_id')
-        if not item_ids:
-            flash("申請対象が不正です")
-            return redirect(url_for('index'))
-
-        # 必須入力チェック
-        manager = form.get('manager', '').strip()
-        comment = form.get('comment', '').strip()
-        approver = form.get('approver', '').strip()
-        qty_checked = form.getlist('qty_checked')
-
-        # ▼ 譲渡申請情報の取得
-        with_transfer = form.get("with_transfer") == "1"
-        transfer_branch_ids = form.getlist("transfer_branch_ids") if with_transfer else []
-        transfer_comment = form.get("transfer_comment", "") if with_transfer else ""
-        transfer_date = form.get("transfer_date", "") if with_transfer else ""
-
-        # 管理者サジェスト正当性チェック
-        manager = form.get('manager', '').strip()
-        errors = []
-        if not manager or manager not in proper_usernames:
-            errors.append("管理者は候補から選択してください。")
-        if not approver:
-            errors.append("承認者を選択してください。")
-        if len(qty_checked) != len(item_ids):
-            errors.append("すべての数量チェックをしてください。")
-        if with_transfer:
-            if not transfer_branch_ids:
-                errors.append("譲渡する枝番を選択してください。")
-            if not transfer_comment.strip():
-                errors.append("譲渡コメントを入力してください。")
-
-        if errors:
-            items = db.execute(
-                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
-            ).fetchall()
-            items = [dict(row) for row in items]
-
-            # --- 再描画時も利用可能枝番を付与＆0件 item を除外 ---
-            from collections import defaultdict
-            placeholders = ','.join(['?'] * len(item_ids))
-            child_rows = db.execute(
-                f"SELECT item_id, branch_no, status FROM child_item WHERE item_id IN ({placeholders})",
-                item_ids
-            ).fetchall()
-
-            eligible = defaultdict(list)
-            for r in child_rows:
-                if r['status'] not in ('破棄', '譲渡'):
-                    eligible[r['item_id']].append(r['branch_no'])
-
-            for it in items:
-                fallback_n = int(it.get('num_of_samples') or 1)
-                fallback_branches = list(range(1, fallback_n + 1))
-                branches = eligible.get(it['id'], fallback_branches)
-                it['available_branches'] = sorted(branches)
-                it['available_count'] = len(branches)
-
-            items = [it for it in items if it['available_count'] > 0]
-            department = g.user['department']
-            all_managers = get_managers_by_department(None, db)
-            sorted_managers = (
-                [m for m in all_managers if m['department'] == department] +
-                [m for m in all_managers if m['department'] != department]
-            )
-            approver_default = sorted_managers[0]['username'] if sorted_managers else ''
-            error_dialog_message = " ".join(errors)
-            return render_template(
-                'checkout_form.html',
-                items=items, fields=INDEX_FIELDS,
-                approver_default=approver_default,
-                approver_list=sorted_managers,
-                proper_users=proper_users_json,
-                owner_candidates=owner_candidates,
-                manager_default=manager_default,
-                g=g,
-                error_dialog_message=error_dialog_message,
-            )
-
-        # ▼ ステータス分岐
-        if with_transfer:
-            new_status = "持ち出し譲渡申請中"
-        else:
-            new_status = "持ち出し申請中"
-
-        applicant = g.user['username']
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        start_date = form.get('start_date', '')
-        end_date = form.get('end_date', '')
-
-        owner_lists = {}
-        for id in item_ids:
-            owner_lists[str(id)] = form.getlist(f'owner_list_{id}')
-
-        for id in item_ids:
-            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
-            original_status = item['status']
-
-            db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
-
-            item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
-            new_values = dict(item)
-            new_values['sample_manager'] = manager
-            if with_transfer:
-                new_values['status'] = "持ち出し譲渡申請中"
-                new_values['checkout_start_date'] = start_date
-                new_values['checkout_end_date'] = end_date
-                new_values['owner_list'] = owner_lists.get(str(id), [])
-                new_values['transfer_date'] = transfer_date
-                transfer_ids_this = []
-                for t in transfer_branch_ids:
-                    try:
-                        tid, branch_no = t.split("_")
-                        if str(tid) == str(id):
-                            transfer_ids_this.append(int(branch_no))
-                    except Exception:
-                        continue
-                new_values['transfer_branch_nos'] = transfer_ids_this
-                new_values['transfer_comment'] = transfer_comment
-            else:
-                new_values['status'] = "持ち出し申請中"
-                new_values['checkout_start_date'] = start_date
-                new_values['checkout_end_date'] = end_date
-                new_values['owner_list'] = owner_lists.get(str(id), [])
-
-            db.execute('''
-                INSERT INTO item_application
-                (item_id, new_values, applicant, applicant_comment, approver, status, application_datetime, original_status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                id, json.dumps(new_values, ensure_ascii=False), applicant, comment, approver, "申請中", now_str, original_status
-            ))
-
-        db.commit()
-
-        # ==== メール送信部（承認者・申請者・管理者・所有者）====
-
-        # itemごとの表示用データ作成
-        # - manager はフォームで選ばれた単一ユーザー（username）
-        # - approver はフォームで選ばれた単一ユーザー（username）
-        # - applicant は g.user['username']
-        # - owners は itemごとの owner_list（usernameの配列）
-        changes = []
-        all_owner_usernames = set()
-        for id in item_ids:
-            owners = owner_lists.get(str(id), [])  # usernameの配列
-            owners = [o for o in owners if o]      # 空除去
-            all_owner_usernames.update(owners)
-            changes.append({
-                "item_id": int(id),
-                "manager": manager,        # username
-                "approver": approver,      # username
-                "applicant": applicant,    # username
-                "owners": owners           # [username]
-            })
-
-        # プロフィールを一括取得（宛先・本文用）
-        usernames_to_fetch = {approver, applicant, manager} | set(all_owner_usernames)
-        profiles = get_user_profiles(db, list(usernames_to_fetch))
-
-        approver_prof  = profiles.get(approver,  {})
-        applicant_prof = profiles.get(applicant, {})
-        manager_prof   = profiles.get(manager,   {})
-        owner_profs    = [profiles[u] for u in sorted(all_owner_usernames)]
-
-        # 宛先（重複排除）: 承認者・申請者・管理者・所有者
-        to_emails = set()
-        for p in [approver_prof, applicant_prof, manager_prof] + owner_profs:
-            email = p.get("email") if isinstance(p, dict) else None
-            if email:
-                to_emails.add(email)
-        to = ",".join(sorted(to_emails))
-
-        # 件名
-        subject = f"[申請] 持ち出し申請の保存（{len(changes)}件）"
-
-        # 本文（usernameは本文に出さない）
-        body = render_template(
-            "mails/checkout_request.txt",
-            approver_prof=approver_prof,
-            applicant_prof=applicant_prof,
-            manager_prof=manager_prof,
-            owner_profs=owner_profs,
-            changes=changes,
-            profiles=profiles,  # changes内のusernameを氏名/部署へ変換するためにlookupで使用
-            with_transfer=with_transfer,
-            start_date=start_date,
-            end_date=end_date,
-            comment=comment,
-            transfer_comment=transfer_comment,
-            transfer_date=transfer_date,
-        )
-
-        result = send_mail(to=to, subject=subject, body=body)
-        if result:
-            flash("持ち出し申請を保存しました。承認待ちです。承認者ほか関係者にメールで連絡しました。")
-        else:
-            flash("持ち出し申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
         # ==== ここまで ====
 
         if request.form.get('from_menu') or request.args.get('from_menu'):
