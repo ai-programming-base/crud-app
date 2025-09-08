@@ -40,7 +40,20 @@
     <tr>
         <td class="nowrap">{{ it['id'] }}</td>
         {% for f in fields %}
-            <td>{{ it[f.key] }}</td>
+        <td>
+        {# サンプル管理者カラムは username -> realname 表示に置換 #}
+        {% if f.key == 'sample_manager' %}
+            {% set uname = it.get('sample_manager') %}
+            {% if uname %}
+            {% set p = profiles.get(uname) %}
+            {{ p.get('realname') if p else uname }}
+            {% else %}
+            {{ '' }}
+            {% endif %}
+        {% else %}
+            {{ it[f.key] }}
+        {% endif %}
+        </td>
         {% endfor %}
         <td class="nowrap">{{ it['sample_count'] }}</td>
     </tr>

@@ -1057,7 +1057,13 @@ def child_items_multiple():
 
     # ▼ 所有者プロフィールを用意（表示用）
     owner_usernames = list({ci['owner'] for ci in child_items if ci['owner']})
-    profiles = get_user_profiles(db, owner_usernames)  # dict[username] -> {department, realname, ...}
+
+    # ▼ サンプル管理者プロフィールも取得対象に追加（items の sample_manager を収集）
+    sample_manager_usernames = list({it.get('sample_manager') for it in items if it.get('sample_manager')})
+
+    # ▼ 所有者 + サンプル管理者を統合して profiles を取得
+    usernames = list({*owner_usernames, *sample_manager_usernames})
+    profiles = get_user_profiles(db, usernames)  # dict[username] -> {department, realname, ...}
 
     return render_template(
         'child_items.html',
