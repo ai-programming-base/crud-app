@@ -238,10 +238,7 @@ def dispose_transfer_request():
             flash("破棄・譲渡申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
         # ==== ここまで ====
 
-        if request.form.get('from_menu'):
-            return redirect(url_for('menu'))
-        else:
-            return redirect(url_for('index_bp.index'))
+        return redirect(url_for('index_bp.index'))
 
     # 申請画面表示（POST/GET共通: item_idリストで遷移）
     if request.method == 'POST':

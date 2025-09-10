@@ -120,6 +120,6 @@
 {% endif %}
 
 <div style="margin-top:20px;">
-  <a href="{% if request.args.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">一覧に戻る</a>
+  <a href="{{ url_for('index_bp.index') }}" class="cancel-btn">一覧に戻る</a>
 </div>
 {% endblock %}

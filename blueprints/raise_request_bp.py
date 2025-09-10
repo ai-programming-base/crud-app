@@ -65,10 +65,7 @@ def raise_request():
                                    select_fields=select_fields,
                                    message="登録しました。同じ内容で新規入力できます。")
         else:
-            if request.form.get('from_menu') or request.args.get('from_menu'):
-                return redirect(url_for('menu'))
-            else:
-                return redirect(url_for('index_bp.index'))
+            return redirect(url_for('index_bp.index'))
 
     # --- GET（コピー起票サポート）---
     copy_id = request.args.get("copy_id")
@@ -96,7 +93,5 @@ def delete_selected():
         db = get_db()
         db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
         db.commit()
-    if request.form.get('from_menu') or request.args.get('from_menu'):
-        return redirect(url_for('menu'))
-    else:
-        return redirect(url_for('index_bp.index'))
+
+    return redirect(url_for('index_bp.index'))

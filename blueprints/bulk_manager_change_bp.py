@@ -101,10 +101,7 @@ def bulk_manager_change():
         else:
             flash(f"管理者を「{new_manager}」に一括変更しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
-        if request.form.get('from_menu') or request.args.get('from_menu'):
-            return redirect(url_for('menu'))
-        else:
-            return redirect(url_for('index_bp.index'))
+        return redirect(url_for('index_bp.index'))
 
     manager_default = g.user['username']
     return render_template(

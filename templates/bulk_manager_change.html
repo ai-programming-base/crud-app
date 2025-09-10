@@ -96,9 +96,6 @@
 {% endif %}
 {% endwith %}
 <form method="post" onsubmit="return checkAndSubmit();">
-    {% if request.args.get('from_menu') %}
-        <input type="hidden" name="from_menu" value="1">
-    {% endif %}
     <input type="hidden" name="ids" value="{{ ids }}">
     <table>
         <tr>
@@ -132,7 +129,7 @@
     </div>
     <div class="button-group">
         <button type="submit" class="main-btn">一括変更</button>
-        <a href="{% if request.args.get('from_menu') or request.form.get('from_menu') %}{{ url_for('menu') }}{% else %}{{ url_for('index') }}{% endif %}" class="cancel-btn">キャンセル</a>
+        <a href="{{ url_for('index_bp.index') }}" class="cancel-btn">キャンセル</a>
     </div>
 </form>
 <script>

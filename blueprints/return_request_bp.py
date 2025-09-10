@@ -162,9 +162,6 @@ def return_request():
             flash("返却申請を保存しました。承認待ちです。メール送信に失敗しましたので、関係者への連絡をお願いします。")
         # ==== ここまで ====
 
-        if request.args.get('from_menu') or request.form.get('from_menu'):
-            return redirect(url_for('menu'))
-        else:
-            return redirect(url_for('index_bp.index'))
+        return redirect(url_for('index_bp.index'))
     
     return redirect(url_for('index_bp.index'))

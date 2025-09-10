@@ -10,7 +10,6 @@ from werkzeug.security import generate_password_hash
 from services import (
     get_db,
     FIELDS,
-    login_required
 )
 
 app = Flask(__name__)
@@ -275,11 +274,6 @@ def load_logged_in_user():
             JOIN user_roles ON roles.id = user_roles.role_id
             WHERE user_roles.user_id=?
         """, (user_id,))]
-
-@app.route('/menu')
-@login_required
-def menu():
-    return render_template('menu.html')
 
 
 @app.template_filter('loadjson')
