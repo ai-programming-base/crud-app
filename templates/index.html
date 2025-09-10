@@ -345,7 +345,7 @@ function submitDelete() {
 
 function submitApplyRequest() {
   var form = document.getElementById('main-form');
-  form.action = "{{ url_for('entry_request') }}";
+  form.action = "{{ url_for('entry_request_bp.entry_request') }}";
   form.method = "POST";
   form.submit();
 }
