@@ -38,6 +38,7 @@ def save_select_fields(data):
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 # ===== ロック関連 =====
