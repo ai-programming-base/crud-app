@@ -379,7 +379,7 @@ function bulkManagerChange() {
 
 function submitReturnRequest() {
   var form = document.getElementById('main-form');
-  form.action = "{{ url_for('return_request') }}";
+  form.action = "{{ url_for('return_request_bp.return_request') }}";
   form.method = "POST";
   form.submit();
 }
