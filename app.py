@@ -55,6 +55,9 @@ app.register_blueprint(bulk_manager_change_bp)
 from blueprints.change_owner_bp import change_owner_bp
 app.register_blueprint(change_owner_bp)
 
+from blueprints.inventory_bp import inventory_bp
+app.register_blueprint(inventory_bp)
+
 
 from flask import url_for as _flask_url_for
 @app.context_processor
@@ -71,6 +74,9 @@ def _urlfor_compat():
             'dispose_transfer_request': 'dispose_transfer_request_bp.dispose_transfer_request',
             'bulk_manager_change': 'bulk_manager_change_bp.bulk_manager_change',
             'change_owner': 'change_owner_bp.change_owner',
+            'inventory_list': 'inventory_bp.inventory_list',
+            'inventory_check': 'inventory_bp.inventory_check',
+            'inventory_history': 'inventory_bp.inventory_history',
         }
         endpoint = mapping.get(endpoint, endpoint)
         return _flask_url_for(endpoint, **values)

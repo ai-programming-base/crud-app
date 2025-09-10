@@ -25,7 +25,7 @@
     <h1>機能メニュー</h1>
     <a href="{{ url_for('index') }}" class="btn">一覧表</a>
     {% if 'admin' in g.user_roles or 'manager' in g.user_roles  or 'proper' in g.user_roles %}
-        <a href="{{ url_for('inventory_list') }}" class="btn">棚卸し一覧</a>
+        <a href="{{ url_for('inventory_bp.inventory_list') }}" class="btn">棚卸し一覧</a>
     {% endif %}
 </div>
 {% endblock %}

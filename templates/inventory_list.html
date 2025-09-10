@@ -49,7 +49,7 @@
     </div>
   {% endif %}
 {% endwith %}
-<form method="post" action="{{ url_for('inventory_check') }}">
+<form method="post" action="{{ url_for('inventory_bp.inventory_check') }}">
     <table>
         <tr>
             <th class="col-checkbox"><input type="checkbox" onclick="toggleSelectAll(this)"></th>
@@ -76,7 +76,7 @@
             {% set lc = item['last_checker'] %}
             <td>{{ user_display.get(lc, lc) if lc else '-' }}</td>
             <td>
-              <a href="{{ url_for('inventory_history', item_id=item['id']) }}" style="color:#3161c4;text-decoration:underline;">履歴</a>
+              <a href="{{ url_for('inventory_bp.inventory_history', item_id=item['id']) }}" style="color:#3161c4;text-decoration:underline;">履歴</a>
             </td>
         </tr>
         {% endfor %}
