@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <div id="error-box" class="error-message"></div>
 
-<form id="edit-form" method="post" action="{{ url_for('bulk_edit_commit') }}">
+<form id="edit-form" method="post" action="{{ url_for('bulk_edit_bp.bulk_edit_commit') }}">
   <table id="edit-table">
     <thead>
       <tr>
@@ -187,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function () {
   </div>
 </form>
 
-<form method="post" action="{{ url_for('bulk_edit_cancel') }}" style="display:inline;">
+<form method="post" action="{{ url_for('bulk_edit_bp.bulk_edit_cancel') }}" style="display:inline;">
   {% for item in items %}
     <input type="hidden" name="item_id" value="{{ item['id'] }}">
   {% endfor %}
