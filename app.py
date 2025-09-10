@@ -1,78 +1,101 @@
-import json
+import os
+import time
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
 
-from flask import Flask, session, g
+from flask import Flask, session, g, request
 from flask import url_for as _flask_url_for
 from werkzeug.security import generate_password_hash
 
-from services import (
-    get_db,
-    FIELDS,
-)
+from services import get_db, FIELDS    # services.logger は下でimport
 from filters import register_filters
 
+# --- ログ設定を先に定義（後で呼び出す） ---
+def configure_logging():
+    """
+    共通ロガー 'myapp' を初期化。
+    環境変数 LOG_LEVEL / LOG_FILE / LOG_MAX_BYTES / LOG_BACKUP_COUNT に対応。
+    """
+    logger = logging.getLogger("myapp")
+    logger.handlers = []  # 重複防止
+
+    level_name = os.getenv("LOG_LEVEL", "DEBUG").upper()
+    logger.setLevel(getattr(logging, level_name, logging.DEBUG))
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)s: %(message)s [%(filename)s:%(lineno)d]")
+
+    log_file = os.getenv("LOG_FILE", "app.log")
+    max_bytes = int(os.getenv("LOG_MAX_BYTES", 5 * 1024 * 1024))
+    backup_cnt = int(os.getenv("LOG_BACKUP_COUNT", 5))
+    file_handler = RotatingFileHandler(log_file, maxBytes=max_bytes, backupCount=backup_cnt, encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(fmt)
+    logger.addHandler(file_handler)
+
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setLevel(logging.DEBUG)
+    stdout_handler.setFormatter(fmt)
+    logger.addHandler(stdout_handler)
+
+    logger.propagate = False
+    logging.getLogger("werkzeug").setLevel(logging.WARNING)
+
+# --- Flaskアプリ生成 ---
 app = Flask(__name__)
 app.secret_key = "any_secret"
-from cli import init_app as register_cli
-register_filters(app)
 
+# ログ設定・フィルタ・CLI登録
+configure_logging()           # ← ここで一度だけ設定（※定義を上に移動）
+register_filters(app)
+from cli import init_app as register_cli
+register_cli(app)
+
+# 以降、services.logger を使う（同名インスタンス）
+from services import logger
+
+# --- Blueprint登録 ---
 from blueprints.index_bp import index_bp
 app.register_blueprint(index_bp)
-
 from blueprints.checkout_bp import checkout_bp
 app.register_blueprint(checkout_bp)
-
 from blueprints.approval_bp import approval_bp
 app.register_blueprint(approval_bp)
-
 from blueprints.child_items_bp import child_items_bp
 app.register_blueprint(child_items_bp)
-
 from blueprints.entry_request_bp import entry_request_bp
 app.register_blueprint(entry_request_bp)
-
 from blueprints.return_request_bp import return_request_bp
 app.register_blueprint(return_request_bp)
-
 from blueprints.dispose_transfer_request_bp import dispose_transfer_request_bp
 app.register_blueprint(dispose_transfer_request_bp)
-
 from blueprints.bulk_manager_change_bp import bulk_manager_change_bp
 app.register_blueprint(bulk_manager_change_bp)
-
 from blueprints.change_owner_bp import change_owner_bp
 app.register_blueprint(change_owner_bp)
-
 from blueprints.inventory_bp import inventory_bp
 app.register_blueprint(inventory_bp)
-
 from blueprints.bulk_edit_bp import bulk_edit_bp
 app.register_blueprint(bulk_edit_bp)
-
 from blueprints.users_bp import users_bp
 app.register_blueprint(users_bp)
-
 from blueprints.auth_bp import auth_bp
 app.register_blueprint(auth_bp)
-
 from blueprints.raise_request_bp import raise_request_bp
 app.register_blueprint(raise_request_bp)
-
 from blueprints.select_field_config_bp import select_field_config_bp
 app.register_blueprint(select_field_config_bp)
-
 from blueprints.print_labels_bp import print_labels_bp
 app.register_blueprint(print_labels_bp)
-
 from blueprints.my_applications_bp import my_applications_bp
 app.register_blueprint(my_applications_bp)
+from blueprints.errors_bp import errors_bp
+app.register_blueprint(errors_bp)
 
+# --- 旧→新エンドポイント互換（後で消せる） ---
 @app.context_processor
 def _urlfor_compat():
     def url_for_compat(endpoint, **values):
-        # 互換マッピング：旧 endpoint -> 新 endpoint
         mapping = {
             'index': 'index_bp.index',
             'checkout_request': 'checkout_bp.checkout_request',
@@ -105,30 +128,36 @@ def _urlfor_compat():
         return _flask_url_for(endpoint, **values)
     return dict(url_for=url_for_compat)
 
+# --- リクエストログ（request を使うので import 済み） ---
+@app.before_request
+def _log_request_start():
+    g._req_start = time.time()
+    uid = getattr(g, "user", None)
+    uid = uid["username"] if uid and "username" in uid.keys() else "-"
+    logger.debug(f"REQ START {request.method} {request.path} user={uid}")
 
-# グローバルロガーを作成
-logger = logging.getLogger("myapp")  # 任意の名前
+@app.after_request
+def _log_request_end(response):
+    dur_ms = int((time.time() - getattr(g, "_req_start", time.time())) * 1000)
+    uid = getattr(g, "user", None)
+    uid = uid["username"] if uid and "username" in uid.keys() else "-"
+    logger.info(f"REQ {request.method} {request.path} {response.status_code} {dur_ms}ms user={uid}")
+    return response
 
-# フォーマッター
-formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s [%(filename)s:%(lineno)d]')
-
-# ファイル用ハンドラ（INFO以上）
-file_handler = RotatingFileHandler('app.log', maxBytes=10000, backupCount=3)
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(formatter)
-
-# stdout用ハンドラ（WARNING以上）
-stdout_handler = logging.StreamHandler(sys.stdout)
-stdout_handler.setLevel(logging.DEBUG)
-stdout_handler.setFormatter(formatter)
-
-# 既存のハンドラをリセット（多重出力防止）
-logger.handlers = []
-logger.setLevel(logging.DEBUG)
-logger.addHandler(file_handler)
-logger.addHandler(stdout_handler)
-logger.propagate = False  # これでroot loggerへの伝播を防止
-
+# --- ログインユーザー読み込み ---
+@app.before_request
+def load_logged_in_user():
+    user_id = session.get('user_id')
+    g.user = None
+    g.user_roles = []
+    if user_id:
+        db = get_db()
+        g.user = db.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        g.user_roles = [r['name'] for r in db.execute("""
+            SELECT roles.name FROM roles
+            JOIN user_roles ON roles.id = user_roles.role_id
+            WHERE user_roles.user_id=?
+        """, (user_id,))]
 
 def init_db():
     with get_db() as db:
