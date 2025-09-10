@@ -494,7 +494,7 @@ document.addEventListener('DOMContentLoaded', function () {
       </div>
     </div>
     {% endif %}
-        
+
     {# 承認メニュー: admin / manager のみ #}
     {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
     <div class="dropdown">
@@ -507,7 +507,7 @@ document.addEventListener('DOMContentLoaded', function () {
     {% endif %}
 
     <div class="dropdown">
-      <button class="dropbtn">編集・表示</button>
+      <button class="dropbtn">編集 / 表示</button>
       <div class="dropdown-menu">
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
         <button type="button" onclick="changeOwners()">所有者を変更</button>
