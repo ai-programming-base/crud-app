@@ -1,28 +1,16 @@
-import os
-import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash, session, g, render_template
-from werkzeug.security import generate_password_hash, check_password_hash
-from functools import wraps
 import json
-from datetime import datetime, timedelta, timezone
-
 import logging
 from logging.handlers import RotatingFileHandler
 import sys
 
-from auth import authenticate
-from send_mail import send_mail
+from flask import Flask, session, g
+from flask import url_for as _flask_url_for
+from werkzeug.security import generate_password_hash
 
-# app.py（先頭の import 群の下あたり）
 from services import (
-    logger,
-    DATABASE, FIELDS_PATH, FIELDS, USER_FIELDS, INDEX_FIELDS, FIELD_KEYS,
-    SELECT_FIELD_PATH, load_select_fields, save_select_fields,
     get_db,
-    LOCK_TTL_MIN, _now, _is_lock_expired, acquire_locks, release_locks, _cleanup_expired_locks,
-    login_required, roles_required,
-    get_managers_by_department, get_proper_users, get_partner_users,
-    get_user_profile, get_user_profiles,
+    FIELDS,
+    login_required
 )
 
 app = Flask(__name__)
@@ -79,7 +67,6 @@ app.register_blueprint(print_labels_bp)
 from blueprints.my_applications_bp import my_applications_bp
 app.register_blueprint(my_applications_bp)
 
-from flask import url_for as _flask_url_for
 @app.context_processor
 def _urlfor_compat():
     def url_for_compat(endpoint, **values):
