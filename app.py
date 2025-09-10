@@ -67,6 +67,9 @@ app.register_blueprint(users_bp)
 from blueprints.auth_bp import auth_bp
 app.register_blueprint(auth_bp)
 
+from blueprints.raise_request_bp import raise_request_bp
+app.register_blueprint(raise_request_bp)
+
 from flask import url_for as _flask_url_for
 @app.context_processor
 def _urlfor_compat():
@@ -94,6 +97,8 @@ def _urlfor_compat():
             'edit_user': 'users_bp.edit_user',
             'login': 'auth_bp.login',
             'logout': 'auth_bp.logout',
+            'raise_request': 'raise_request_bp.raise_request',
+            'delete_selected': 'raise_request_bp.delete_selected',
         }
         endpoint = mapping.get(endpoint, endpoint)
         return _flask_url_for(endpoint, **values)
@@ -305,89 +310,6 @@ def select_field_config():
 @login_required
 def menu():
     return render_template('menu.html')
-
-
-@app.route('/raise_request', methods=['GET', 'POST'])
-@login_required
-@roles_required('admin', 'manager', 'proper', 'partner')
-def raise_request():
-    SELECT_FIELDS_PATH = os.path.join(os.path.dirname(__file__), 'select_fields.json')
-    if os.path.exists(SELECT_FIELDS_PATH):
-        with open(SELECT_FIELDS_PATH, encoding='utf-8') as f:
-            select_fields = json.load(f)
-    else:
-        select_fields = {}
-
-    if request.method == 'POST':
-        user_values = {}
-        errors = []
-        for f in USER_FIELDS:
-            v = request.form.get(f['key'], '').strip()
-            user_values[f['key']] = v
-            if f.get('required') and not v:
-                errors.append(f"{f['name']}（必須）を入力してください。")
-            # int型バリデーション
-            if f.get('type') == 'int' and v:
-                if not v.isdigit() or int(v) < 1:
-                    errors.append(f"{f['name']}は1以上の整数で入力してください。")
-        internal_values = []
-        for f in FIELDS:
-            if f.get('internal', False):
-                if f['key'] == 'status':
-                    internal_values.append("入庫前")
-                else:
-                    internal_values.append("")
-        # DB登録用リストは順序通り
-        values = [user_values.get(f['key'], '') for f in USER_FIELDS] + internal_values
-
-        if errors:
-            for msg in errors:
-                flash(msg)
-            # 再描画時もdictで渡す
-            return render_template('raise_request.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields)
-
-        db = get_db()
-        db.execute(
-            f'INSERT INTO item ({",".join(FIELD_KEYS)}) VALUES ({",".join(["?"]*len(FIELD_KEYS))})',
-            values
-        )
-        db.commit()
-
-        if 'add_and_next' in request.form:
-            return render_template('raise_request.html', fields=USER_FIELDS, values=user_values, select_fields=select_fields, message="登録しました。同じ内容で新規入力できます。")
-        else:
-            if request.form.get('from_menu') or request.args.get('from_menu'):
-                return redirect(url_for('menu'))
-            else:
-                return redirect(url_for('index_bp.index'))
-
-    # --- GET時（コピーして起票サポート）---
-    # パラメータでcopy_idが来たら、そのIDの値を初期値に使う
-    copy_id = request.args.get("copy_id")
-    values = {f['key']: "" for f in USER_FIELDS}
-    if copy_id:
-        db = get_db()
-        item = db.execute("SELECT * FROM item WHERE id=?", (copy_id,)).fetchone()
-        if item:
-            item = dict(item)
-            for f in USER_FIELDS:
-                values[f['key']] = str(item.get(f['key'], '')) if item.get(f['key']) is not None else ""
-    return render_template('raise_request.html', fields=USER_FIELDS, values=values, select_fields=select_fields)
-
-
-@app.route('/delete_selected', methods=['POST'])
-@login_required
-@roles_required('admin', 'manager')
-def delete_selected():
-    ids = request.form.getlist('selected_ids')
-    if ids:
-        db = get_db()
-        db.executemany('DELETE FROM item WHERE id=?', [(item_id,) for item_id in ids])
-        db.commit()
-    if request.form.get('from_menu') or request.args.get('from_menu'):
-        return redirect(url_for('menu'))
-    else:
-        return redirect(url_for('index_bp.index'))
 
 
 @app.route('/my_applications')

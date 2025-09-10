@@ -338,7 +338,7 @@ document.addEventListener('DOMContentLoaded', function () {
 // 操作用関数群
 function submitDelete() {
   var form = document.getElementById('main-form');
-  form.action = "{{ url_for('delete_selected') }}";
+  form.action = "{{ url_for('raise_request_bp.delete_selected') }}";
   form.method = "POST";
   form.submit();
 }
@@ -473,7 +473,7 @@ document.addEventListener('DOMContentLoaded', function () {
       <button class="dropbtn">起票 / ラベル</button>
       <div class="dropdown-menu">
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
-        <a href="{{ url_for('raise_request', per_page=per_page, **filters) }}" class="button-link">起票（新規登録）</a>
+        <a href="{{ url_for('raise_request_bp.raise_request', per_page=per_page, **filters) }}" class="button-link">起票（新規登録）</a>
         <button type="button" onclick="copyToAdd()">起票（コピー：1件選択）</button>
         <button type="button" onclick="showPrintLabels()">選択ラベル印刷</button>
         {% endif %}
