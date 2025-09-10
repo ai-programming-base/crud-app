@@ -494,8 +494,9 @@ document.addEventListener('DOMContentLoaded', function () {
       </div>
     </div>
     {% endif %}
-
-    {% if 'admin' in g.user_roles or 'manager' %}
+        
+    {# 承認メニュー: admin / manager のみ #}
+    {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
     <div class="dropdown">
       <button class="dropbtn">承認</button>
       <div class="dropdown-menu">
