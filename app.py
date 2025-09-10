@@ -11,9 +11,11 @@ from services import (
     get_db,
     FIELDS,
 )
+from filters import register_filters
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
+register_filters(app)
 
 from blueprints.index_bp import index_bp
 app.register_blueprint(index_bp)
@@ -274,16 +276,6 @@ def load_logged_in_user():
             JOIN user_roles ON roles.id = user_roles.role_id
             WHERE user_roles.user_id=?
         """, (user_id,))]
-
-
-@app.template_filter('loadjson')
-def loadjson_filter(s):
-    if not s:
-        return {}
-    try:
-        return json.loads(s)
-    except Exception:
-        return {}
 
 
 if __name__ == '__main__':
