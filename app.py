@@ -70,6 +70,15 @@ app.register_blueprint(auth_bp)
 from blueprints.raise_request_bp import raise_request_bp
 app.register_blueprint(raise_request_bp)
 
+from blueprints.select_field_config_bp import select_field_config_bp
+app.register_blueprint(select_field_config_bp)
+
+from blueprints.print_labels_bp import print_labels_bp
+app.register_blueprint(print_labels_bp)
+
+from blueprints.my_applications_bp import my_applications_bp
+app.register_blueprint(my_applications_bp)
+
 from flask import url_for as _flask_url_for
 @app.context_processor
 def _urlfor_compat():
@@ -99,6 +108,9 @@ def _urlfor_compat():
             'logout': 'auth_bp.logout',
             'raise_request': 'raise_request_bp.raise_request',
             'delete_selected': 'raise_request_bp.delete_selected',
+            'select_field_config': 'select_field_config_bp.select_field_config',
+            'print_labels': 'print_labels_bp.print_labels',
+            'my_applications': 'my_applications_bp.my_applications',
         }
         endpoint = mapping.get(endpoint, endpoint)
         return _flask_url_for(endpoint, **values)
@@ -277,76 +289,11 @@ def load_logged_in_user():
             WHERE user_roles.user_id=?
         """, (user_id,))]
 
-
-@app.route('/select_field_config', methods=['GET', 'POST'])
-@login_required
-@roles_required('admin', 'manager')
-def select_field_config():
-    # fields.jsonのユーザー項目のみ
-    fields = [f for f in FIELDS if not f.get('internal')]
-    # 現在の選択式設定をロード
-    select_fields = load_select_fields()   # ←定義必要（例：JSONファイル読み込み）
-
-    if request.method == 'POST':
-        # 選択式フィールド情報の保存
-        new_select_fields = {}
-        for f in fields:
-            key = f['key']
-            # チェックボックス等で「選択式」指定されているか
-            if request.form.get(f"use_{key}") == "1":
-                options = request.form.get(f"options_{key}", "")
-                # カンマ区切りで保存
-                opts = [o.strip() for o in options.split(",") if o.strip()]
-                if opts:
-                    new_select_fields[key] = opts
-        save_select_fields(new_select_fields)  # ←定義必要（例：JSONファイル書き込み）
-        flash("設定を保存しました")
-        return redirect(url_for('select_field_config'))
-
-    return render_template("select_field_config.html", fields=fields, select_fields=select_fields)
-
-
 @app.route('/menu')
 @login_required
 def menu():
     return render_template('menu.html')
 
-
-@app.route('/my_applications')
-@login_required
-def my_applications():
-    status = request.args.get('status', 'all')
-    db = get_db()
-    params = [g.user['username']]
-    where = "applicant=?"
-    if status == "approved":
-        where += " AND status='承認'"
-    elif status == "pending":
-        where += " AND status!='承認'"
-    apps = db.execute(f"""
-        SELECT * FROM item_application
-        WHERE {where}
-        ORDER BY application_datetime DESC
-    """, params).fetchall()
-
-    # ★ department realname 形式（realname が空なら username を使う）
-    user_rows = db.execute("""
-        SELECT
-            username,
-            TRIM(
-                COALESCE(NULLIF(department,''),'') || ' ' ||
-                COALESCE(NULLIF(realname,''), username)
-            ) AS display_name
-        FROM users
-    """).fetchall()
-    user_display = {r["username"]: r["display_name"] for r in user_rows}
-
-    return render_template(
-        'my_applications.html',
-        applications=apps,
-        status=status,
-        user_display=user_display,
-    )
 
 @app.template_filter('loadjson')
 def loadjson_filter(s):
@@ -356,40 +303,6 @@ def loadjson_filter(s):
         return json.loads(s)
     except Exception:
         return {}
-
-
-@app.route('/print_labels', methods=['GET', 'POST'])
-@login_required
-def print_labels():
-    # 選択されたIDのリストを取得（例: POSTでもGETでもOKなように）
-    if request.method == 'POST':
-        ids = request.form.getlist('selected_ids')
-    else:
-        ids = request.args.get('ids', '').split(',')
-
-    ids = [int(i) for i in ids if i.isdigit()]
-    if not ids:
-        flash("ラベル印刷するアイテムを選択してください。")
-        return redirect(url_for('index_bp.index'))
-
-    db = get_db()
-    items = db.execute(
-        f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(ids))})",
-        ids
-    ).fetchall()
-    items = [dict(row) for row in items]
-    items_sorted = sorted(items, key=lambda x: x['id'])
-
-    # fields.json読み込み
-    FIELDS_PATH = os.path.join(os.path.dirname(__file__), 'fields.json')
-    with open(FIELDS_PATH, encoding='utf-8') as f:
-        fields = json.load(f)
-
-    return render_template(
-        'print_labels.html',
-        items=items_sorted,
-        fields=fields
-    )
 
 
 if __name__ == '__main__':
