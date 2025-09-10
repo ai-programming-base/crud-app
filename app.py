@@ -15,6 +15,7 @@ from filters import register_filters
 
 app = Flask(__name__)
 app.secret_key = "any_secret"
+from cli import init_app as register_cli
 register_filters(app)
 
 from blueprints.index_bp import index_bp
