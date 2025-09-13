@@ -18,6 +18,9 @@ from send_mail import send_mail
 
 dispose_transfer_request_bp = Blueprint("dispose_transfer_request_bp", __name__)
 
+# 破棄・譲渡申請を受け付ける item.status を一箇所で定義
+DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES = ('入庫', '持ち出し中', '返却済')
+
 @dispose_transfer_request_bp.route('/dispose_transfer_request', methods=['GET', 'POST'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
@@ -81,10 +84,31 @@ def dispose_transfer_request():
         if len(qty_checked_ids) != len(item_ids):
             errors.append("すべての親アイテムで数量チェックをしてください。")
 
-        if errors:
-            items = db.execute(
-                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        # item.status を許可状態にバリデーション
+        if item_ids:
+            rows_status = db.execute(
+                f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+                item_ids
             ).fetchall()
+            not_allowed = [str(r['id']) for r in rows_status if r['status'] not in DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES]
+            if not_allowed:
+                errors.append(
+                    f"許可外の状態のアイテムが含まれています（ID: {', '.join(not_allowed)}）。"
+                    f"申請可能な状態は {', '.join(DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES)} です。"
+                )
+
+        if errors:
+            # 再描画用：許可ステータスのみを対象にテーブルを復元
+            allowed_ids = []
+            if item_ids:
+                allowed_ids = [str(r['id']) for r in rows_status if r['status'] in DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES]
+            if allowed_ids:
+                items = db.execute(
+                    f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})", allowed_ids
+                ).fetchall()
+            else:
+                items = []
+
             item_list = []
             for item in items:
                 item = dict(item)
@@ -101,12 +125,18 @@ def dispose_transfer_request():
                     ).fetchone()[0]
                     item['sample_count'] = cnt
                 item_list.append(item)
-            child_items = db.execute(
-                f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
-                item_ids
-            ).fetchall()
+
+            if allowed_ids:
+                child_items = db.execute(
+                    f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(allowed_ids))}) ORDER BY item_id, branch_no",
+                    allowed_ids
+                ).fetchall()
+            else:
+                child_items = []
+
             for msg in errors:
                 flash(msg)
+
             department = g.user['department']
             all_managers = get_managers_by_department(None, db)
             sorted_managers = (
@@ -129,8 +159,12 @@ def dispose_transfer_request():
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         for item_id in item_ids:
-            item = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
-            item_dict = dict(item)
+            # ▼ 念押し：更新直前にも状態チェック（競合で変化した場合の防止）
+            cur = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
+            if not cur or cur['status'] not in DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES:
+                continue
+
+            item_dict = dict(cur)
             child_total = db.execute(
                 "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
             ).fetchone()[0]
@@ -158,8 +192,7 @@ def dispose_transfer_request():
             new_values['target_child_branches'] = target_child_branches_this
             new_values['status'] = "破棄・譲渡申請中"
 
-            item = db.execute("SELECT * FROM item WHERE id=?", (item_id,)).fetchone()
-            original_status = item['status']
+            original_status = cur['status']
 
             db.execute('''
                 INSERT INTO item_application
@@ -246,9 +279,26 @@ def dispose_transfer_request():
         if not item_ids:
             flash("申請対象を選択してください")
             return redirect(url_for('index_bp.index'))
-        items = db.execute(
-            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+
+        # ▼ 追加：許可ステータスでフィルタ（入庫／持ち出し中／返却済のみ）
+        rows_status = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+            item_ids
         ).fetchall()
+        allowed_ids = [str(r['id']) for r in rows_status if r['status'] in DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES]
+        excluded_ids = [str(r['id']) for r in rows_status if r['status'] not in DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES]
+
+        if not allowed_ids:
+            flash(f"選択されたアイテムは申請対象の状態ではありません（許可: {', '.join(DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES)}）。")
+            return redirect(url_for('index_bp.index'))
+
+        if excluded_ids:
+            flash(f"許可外の状態のアイテムを除外しました（ID: {', '.join(excluded_ids)}）。")
+
+        items = db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})", allowed_ids
+        ).fetchall()
+
         item_list = []
         for item in items:
             item = dict(item)
@@ -267,8 +317,8 @@ def dispose_transfer_request():
             item_list.append(item)
 
         child_items = db.execute(
-            f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(item_ids))}) ORDER BY item_id, branch_no",
-            item_ids
+            f"SELECT * FROM child_item WHERE item_id IN ({','.join(['?']*len(allowed_ids))}) ORDER BY item_id, branch_no",
+            allowed_ids
         ).fetchall()
 
         department = g.user['department']
