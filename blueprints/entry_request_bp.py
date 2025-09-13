@@ -16,6 +16,9 @@ from send_mail import send_mail
 
 entry_request_bp = Blueprint("entry_request_bp", __name__)
 
+# 申請対象として許可する item.status を一箇所で定義
+ENTRY_ALLOWED_ITEM_STATUSES = ('入庫前',)
+
 @entry_request_bp.route('/entry_request', methods=['POST', 'GET'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
@@ -51,18 +54,19 @@ def entry_request():
             flash("申請対象を選択してください")
             return redirect(url_for('index_bp.index'))
 
-        # ▼ 入庫前限定チェック
-        all_items = db.execute(
+        # ▼ 入庫前（= 許可ステータス）限定フィルタ
+        rows_status = db.execute(
             f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
-        allowed_ids = [str(r['id']) for r in all_items if r['status'] == '入庫前']
+        allowed_ids = [str(r['id']) for r in rows_status if r['status'] in ENTRY_ALLOWED_ITEM_STATUSES]
+        excluded_ids = [str(r['id']) for r in rows_status if r['status'] not in ENTRY_ALLOWED_ITEM_STATUSES]
 
         if not allowed_ids:
-            flash("選択されたアイテムは入庫前のものがありません。入庫前のアイテムのみ選択してください。")
+            flash(f"選択されたアイテムは申請対象の状態ではありません（許可: {', '.join(ENTRY_ALLOWED_ITEM_STATUSES)}）。")
             return redirect(url_for('index_bp.index'))
 
-        if len(allowed_ids) != len(item_ids):
-            flash("入庫前以外のアイテムは申請対象から除外しました。")
+        if excluded_ids:
+            flash(f"許可外の状態のアイテムを除外しました（ID: {', '.join(excluded_ids)}）。")
 
         items = db.execute(
             f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})", allowed_ids
@@ -129,17 +133,20 @@ def entry_request():
             if not transfer_comment.strip():
                 errors.append("譲渡コメントを入力してください。")
 
-        # ▼ 状態チェック: 入庫前のみ許可
-        rows = db.execute(
+        # ▼ 状態チェック: 許可ステータスのみ許可（初期：入庫前）
+        rows_status = db.execute(
             f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
         ).fetchall()
-        not_allowed = [str(r['id']) for r in rows if r['status'] != '入庫前']
+        not_allowed = [str(r['id']) for r in rows_status if r['status'] not in ENTRY_ALLOWED_ITEM_STATUSES]
         if not_allowed:
-            errors.append(f"入庫前ではないアイテムが含まれています（ID: {', '.join(not_allowed)}）。入庫前のみ申請可能です。")
+            errors.append(
+                f"許可外の状態のアイテムが含まれています（ID: {', '.join(not_allowed)}）。"
+                f"申請可能な状態は {', '.join(ENTRY_ALLOWED_ITEM_STATUSES)} です。"
+            )
 
         if errors:
-            # 再表示用: 入庫前のみ残して描画
-            allowed_ids = [str(r['id']) for r in rows if r['status'] == '入庫前']
+            # 再表示用: 許可ステータスのみ残して描画
+            allowed_ids = [str(r['id']) for r in rows_status if r['status'] in ENTRY_ALLOWED_ITEM_STATUSES]
             if allowed_ids:
                 items = db.execute(
                     f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})", allowed_ids
@@ -191,8 +198,9 @@ def entry_request():
             # item_applicationに申請内容を登録
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
 
-            # ▼ 念押し: 入庫前以外はスキップ
-            if item['status'] != '入庫前':
+            # ▼ 念押し：更新直前にも状態チェック（競合対策・許可ステータスのみ）
+            if item['status'] not in ENTRY_ALLOWED_ITEM_STATUSES:
+                # 許可外になっていたらこのIDだけスキップ（必要なら収集して後で通知も可）
                 continue
 
             original_status = item['status']
