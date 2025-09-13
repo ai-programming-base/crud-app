@@ -50,10 +50,25 @@ def entry_request():
         if not item_ids:
             flash("申請対象を選択してください")
             return redirect(url_for('index_bp.index'))
+
+        # ▼ 入庫前限定チェック
+        all_items = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        ).fetchall()
+        allowed_ids = [str(r['id']) for r in all_items if r['status'] == '入庫前']
+
+        if not allowed_ids:
+            flash("選択されたアイテムは入庫前のものがありません。入庫前のアイテムのみ選択してください。")
+            return redirect(url_for('index_bp.index'))
+
+        if len(allowed_ids) != len(item_ids):
+            flash("入庫前以外のアイテムは申請対象から除外しました。")
+
         items = db.execute(
-            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})", allowed_ids
         ).fetchall()
         items = [dict(row) for row in items]
+
         department = g.user['department']
         # manager権限ユーザーリスト取得
         all_managers = get_managers_by_department(None, db)
@@ -114,11 +129,25 @@ def entry_request():
             if not transfer_comment.strip():
                 errors.append("譲渡コメントを入力してください。")
 
+        # ▼ 状態チェック: 入庫前のみ許可
+        rows = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+        ).fetchall()
+        not_allowed = [str(r['id']) for r in rows if r['status'] != '入庫前']
+        if not_allowed:
+            errors.append(f"入庫前ではないアイテムが含まれています（ID: {', '.join(not_allowed)}）。入庫前のみ申請可能です。")
+
         if errors:
-            items = db.execute(
-                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
-            ).fetchall()
+            # 再表示用: 入庫前のみ残して描画
+            allowed_ids = [str(r['id']) for r in rows if r['status'] == '入庫前']
+            if allowed_ids:
+                items = db.execute(
+                    f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})", allowed_ids
+                ).fetchall()
+            else:
+                items = []
             items = [dict(row) for row in items]
+
             department = g.user['department']
             all_managers = get_managers_by_department(None, db)
             sorted_managers = (
@@ -161,6 +190,11 @@ def entry_request():
         for id in item_ids:
             # item_applicationに申請内容を登録
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+
+            # ▼ 念押し: 入庫前以外はスキップ
+            if item['status'] != '入庫前':
+                continue
+
             original_status = item['status']
 
             # itemのstatusのみ即時変更
