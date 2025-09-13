@@ -12,6 +12,30 @@ from send_mail import send_mail
 
 approval_bp = Blueprint("approval_bp", __name__)
 
+# 全子アイテムが破棄or譲渡になった場合に親の状態を確定する
+def _update_parent_status_if_all_disposed_or_transferred(db, item_id: int):
+    rows = db.execute(
+        "SELECT status FROM child_item WHERE item_id=?",
+        (item_id,)
+    ).fetchall()
+    if not rows:
+        return  # 子が無ければ何もしない（安全側）
+
+    statuses = [r["status"] for r in rows]
+    alive_exists = any(s not in ("破棄", "譲渡") for s in statuses)
+    if alive_exists:
+        return  # まだ残っている（=残数>0）
+
+    # ここに来たら残数0。親の状態を確定する
+    if all(s == "破棄" for s in statuses):
+        parent = "破棄"
+    elif all(s == "譲渡" for s in statuses):
+        parent = "譲渡"
+    else:
+        parent = "破棄・譲渡"
+
+    db.execute("UPDATE item SET status=? WHERE id=?", (parent, item_id))
+
 def build_application_mail(db, app_row, action: str, approver_comment: str = ""):
     """
     item_application の1件 (app_row) と action ('approve' | 'reject') から
@@ -262,6 +286,7 @@ def approval():
                             "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=? WHERE item_id=? AND branch_no=?",
                             ("譲渡", transfer_comment, '', transfer_date, item_id, branch_no)
                         )
+                    _update_parent_status_if_all_disposed_or_transferred(db, item_id)
 
                 elif status == "入庫持ち出し申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
@@ -349,6 +374,7 @@ def approval():
                                 "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=? WHERE item_id=? AND branch_no=?",
                                 ("譲渡", transfer_comment, '', transfer_date, item_id, branch_no)
                             )
+                        _update_parent_status_if_all_disposed_or_transferred(db, item_id)
 
                 elif status == "返却申請中":
                     db.execute(
@@ -379,11 +405,32 @@ def approval():
                             (new_status, dispose_comment, '', transfer_dispose_date, cid)
                         )
 
-                    # 親アイテムの status は「元の状態」に戻す（元仕様の維持）
-                    original_status = app_row.get('original_status') or ""
-                    if original_status:
-                        db.execute("UPDATE item SET status=? WHERE id=?", (original_status, item_id))
-                    # original_status が無い場合は親の現行状態は変更しない（安全策）
+                    # ▼ 承認後の状態判定：
+                    #   承認結果として、全ての子が「破棄 or 譲渡」になった（=残数0）の場合は、
+                    #   親を以下で確定：
+                    #     - 全て破棄 -> 親=「破棄」
+                    #     - 全て譲渡 -> 親=「譲渡」
+                    #     - 混在     -> 親=「破棄・譲渡」
+                    #   そうでない場合は従来通り original_status を維持/復帰。
+                    rows = db.execute(
+                        "SELECT status FROM child_item WHERE item_id=?",
+                        (item_id,)
+                    ).fetchall()
+                    if rows and all(r["status"] in ("破棄", "譲渡") for r in rows):
+                        # 全てが破棄/譲渡になった
+                        if all(r["status"] == "破棄" for r in rows):
+                            parent = "破棄"
+                        elif all(r["status"] == "譲渡" for r in rows):
+                            parent = "譲渡"
+                        else:
+                            parent = "破棄・譲渡"
+                        db.execute("UPDATE item SET status=? WHERE id=?", (parent, item_id))
+                    else:
+                        # まだ生存枝がある → 元仕様：親は original_status を維持/復帰
+                        original_status = app_row.get('original_status') or ""
+                        if original_status:
+                            db.execute("UPDATE item SET status=? WHERE id=?", (original_status, item_id))
+                        # original_status 無しなら親は変更しない（安全策）
 
                 # 申請レコードの状態更新＆履歴記録
                 db.execute('''
