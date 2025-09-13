@@ -434,6 +434,7 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
   </div>
 
+  {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
   <div class="topbar-right">
     <div class="dropdown">
       <button class="dropbtn">棚卸</button>
@@ -442,6 +443,7 @@ document.addEventListener('DOMContentLoaded', function () {
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
 <!-- ====== /Top Action Bar ====== -->
 
