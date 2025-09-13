@@ -13,6 +13,9 @@ from send_mail import send_mail
 
 checkout_bp = Blueprint("checkout_bp", __name__)
 
+# 申請対象として許可する item.status を一箇所で定義
+CHECKOUT_ALLOWED_ITEM_STATUSES = ('入庫', '持ち出し中', '返却済')
+
 @checkout_bp.route('/checkout_request', methods=['POST', 'GET'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
@@ -46,16 +49,32 @@ def checkout_request():
             flash("申請対象を選択してください")
             return redirect(url_for('index_bp.index'))
 
+        # ▼ item.status を確認し、許可ステータスのみを対象にする
+        rows_status = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+            item_ids
+        ).fetchall()
+        allowed_ids = [str(r['id']) for r in rows_status if r['status'] in CHECKOUT_ALLOWED_ITEM_STATUSES]
+        excluded_ids = [str(r['id']) for r in rows_status if r['status'] not in CHECKOUT_ALLOWED_ITEM_STATUSES]
+
+        if not allowed_ids:
+            flash(f"選択されたアイテムは申請対象の状態ではありません（許可: {', '.join(CHECKOUT_ALLOWED_ITEM_STATUSES)}）。")
+            return redirect(url_for('index_bp.index'))
+
+        if excluded_ids:
+            flash(f"許可外の状態のアイテムを除外しました（ID: {', '.join(excluded_ids)}）。")
+
         items = db.execute(
-            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})",
+            allowed_ids
         ).fetchall()
         items = [dict(row) for row in items]
 
         # --- 利用可能枝番の付与 ---
-        placeholders = ','.join(['?'] * len(item_ids))
+        placeholders = ','.join(['?'] * len(allowed_ids))
         child_rows = db.execute(
             f"SELECT item_id, branch_no, status FROM child_item WHERE item_id IN ({placeholders})",
-            item_ids
+            allowed_ids
         ).fetchall()
 
         eligible = defaultdict(list)
@@ -139,18 +158,39 @@ def checkout_request():
             if not transfer_comment.strip():
                 errors.append("譲渡コメントを入力してください。")
 
+        # ▼ item.status のバリデーション（入庫／持ち出し中／返却済 のみ許可）
+        rows_status = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+            item_ids
+        ).fetchall()
+        not_allowed = [str(r['id']) for r in rows_status if r['status'] not in CHECKOUT_ALLOWED_ITEM_STATUSES]
+        if not_allowed:
+            errors.append(
+                f"許可外の状態のアイテムが含まれています（ID: {', '.join(not_allowed)}）。"
+                f"申請可能な状態は {', '.join(CHECKOUT_ALLOWED_ITEM_STATUSES)} です。"
+            )
+
         if errors:
-            items = db.execute(
-                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
-            ).fetchall()
+            # 再描画用：許可ステータスのみで items を作成
+            allowed_ids = [str(r['id']) for r in rows_status if r['status'] in CHECKOUT_ALLOWED_ITEM_STATUSES]
+            if allowed_ids:
+                items = db.execute(
+                    f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})",
+                    allowed_ids
+                ).fetchall()
+            else:
+                items = []
             items = [dict(row) for row in items]
 
             # 再描画用：利用可能枝番の付与
-            placeholders = ','.join(['?'] * len(item_ids))
-            child_rows = db.execute(
-                f"SELECT item_id, branch_no, status FROM child_item WHERE item_id IN ({placeholders})",
-                item_ids
-            ).fetchall()
+            if allowed_ids:
+                placeholders = ','.join(['?'] * len(allowed_ids))
+                child_rows = db.execute(
+                    f"SELECT item_id, branch_no, status FROM child_item WHERE item_id IN ({placeholders})",
+                    allowed_ids
+                ).fetchall()
+            else:
+                child_rows = []
 
             eligible = defaultdict(list)
             for r in child_rows:
@@ -165,6 +205,7 @@ def checkout_request():
                 it['available_count'] = len(branches)
 
             items = [it for it in items if it['available_count'] > 0]
+
             department = g.user['department']
             all_managers = get_managers_by_department(None, db)
             sorted_managers = (
@@ -199,6 +240,12 @@ def checkout_request():
 
         for id in item_ids:
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+
+            # ▼ 念押し：更新直前にも状態チェック（競合対策）
+            if item['status'] not in CHECKOUT_ALLOWED_ITEM_STATUSES:
+                # 許可外になっていたらこのIDだけスキップ（必要なら収集して後で通知も可）
+                continue
+
             original_status = item['status']
 
             db.execute("UPDATE item SET status=? WHERE id=?", (new_status, id))
