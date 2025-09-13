@@ -443,3 +443,85 @@ def approval():
         return render_template('approval.html', items=[], fields=INDEX_FIELDS, message="処理が完了しました", finish=True)
 
     return render_template('approval.html', items=items, fields=INDEX_FIELDS, user_display=user_display)
+
+
+@approval_bp.route('/my_approvals')
+@login_required
+@roles_required('admin', 'manager')
+def my_approvals():
+    db = get_db()
+    username = g.user['username']
+    status = request.args.get('status', 'all')  # 'all' | '申請中' | '承認' | '差し戻し'
+
+    where = "approver=?"
+    params = [username]
+    if status in ("申請中", "承認", "差し戻し"):
+        where += " AND status=?"
+        params.append(status)
+
+    rows = db.execute(f"""
+        SELECT *
+        FROM item_application
+        WHERE {where}
+        ORDER BY application_datetime DESC
+    """, params).fetchall()
+
+    # 申請詳細プレビュー用（approval.html 相当）：new_values パース＆所有者プレビュー
+    items = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d['parsed_values'] = json.loads(d.get('new_values') or "{}")
+        except Exception:
+            d['parsed_values'] = {}
+
+        # 所有者プレビュー（approval() と同等の概略）
+        pv = d.get('parsed_values', {})
+        owners = pv.get('owner_list') or []
+        if owners:
+            item_id = d['item_id']
+            ci = db.execute(
+                "SELECT branch_no, status FROM child_item WHERE item_id=?",
+                (item_id,)
+            ).fetchall()
+            disposed_transferred = {x['branch_no'] for x in ci if x['status'] in ('破棄', '譲渡')}
+            alive = {x['branch_no'] for x in ci if x['status'] not in ('破棄', '譲渡')}
+            reuse_iter = iter(sorted(alive))
+            max_existing = max([0] + [x['branch_no'] for x in ci])
+            next_branch = max_existing + 1
+
+            owner_pairs = []
+            for owner in owners:
+                try:
+                    b = next(reuse_iter)
+                except StopIteration:
+                    while next_branch in disposed_transferred:
+                        next_branch += 1
+                    b = next_branch
+                    next_branch += 1
+                owner_pairs.append((b, owner))
+            d['owner_pairs'] = owner_pairs
+        else:
+            d['owner_pairs'] = []
+
+        items.append(d)
+
+    # 表示名（部署+氏名 or username）マップ
+    user_rows = db.execute("""
+        SELECT
+            username,
+            TRIM(
+                COALESCE(NULLIF(department,''),'') || ' ' ||
+                COALESCE(NULLIF(realname,''), username)
+            ) AS display_name
+        FROM users
+    """).fetchall()
+    user_display = {r["username"]: r["display_name"] for r in user_rows}
+
+    return render_template(
+        'my_approvals.html',
+        items=items,
+        fields=INDEX_FIELDS,
+        user_display=user_display,
+        cur_status=status
+    )

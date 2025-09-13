@@ -1,0 +1,178 @@
+{% extends "_base.html" %}
+{% block title %}自分が承認者の申請一覧{% endblock %}
+
+{% block head %}
+<style>
+  table { border-collapse: collapse; width: 98%; }
+  th, td { border: 1px solid #aaa; padding: 6px 12px; }
+  th { background: #eee; }
+  .detail-table { background: #f8f8fc; border: 1px solid #d1d5db; font-size: 95%; margin: 5px 0; }
+  .detail-table th, .detail-table td { border: 1px solid #d1d5db; padding: 3px 7px; }
+
+  /* ▼ フィルタボタン */
+  .filter-tabs { margin: 8px 0 12px; }
+  .filter-btn {
+    display: inline-block;
+    padding: 6px 14px;
+    margin-right: 6px;
+    background: #eee;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 14px;
+    color: #333;
+    transition: background 0.2s;
+  }
+  .filter-btn:hover { background: #ddd; }
+  .filter-btn.active {
+    background: #4285f4;
+    border-color: #3367d6;
+    color: #fff;
+    font-weight: bold;
+  }
+</style>
+{% endblock %}
+
+{% macro show(val) -%}
+  {%- if val is string -%}
+    {{ user_display.get(val, val) }}
+  {%- elif val is sequence and (val is not string) -%}
+    {%- for x in val -%}
+      {{ user_display.get(x, x) }}{{ ', ' if not loop.last }}
+    {%- endfor -%}
+  {%- else -%}
+    {{ val }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+<h1>自分が承認者の申請一覧</h1>
+
+<div class="filter-tabs" style="margin:8px 0 12px;">
+  {% set tabs = [
+    ('all','全て'), ('申請中','申請中'), ('承認','承認済み'), ('差し戻し','差し戻し')
+  ] %}
+  {% for v, label in tabs %}
+    <a href="{{ url_for('approval_bp.my_approvals', status=v) }}"
+       class="filter-btn {{ 'active' if cur_status==v else '' }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<table>
+    <tr>
+    <th>履歴ID</th>
+    <th>通し番号</th>
+    <th>申請者</th>
+    <th>申請内容</th>
+    <th>申請内容詳細</th>
+    <th>申請者コメント</th>
+    <th>申請日時</th>
+    <th>現在ステータス</th>
+    <th>処理日時</th>   <!-- ← 承認日時＋差し戻し日時を統合 -->
+    <th>承認・差し戻しコメント</th>
+</tr>
+
+  {% for item in items %}
+  <tr>
+    <td>{{ item['id'] }}</td>
+    <td>{{ item['item_id'] }}</td>
+    <td>{{ show(item['applicant']) }}</td>
+    <td>
+      {% if item.parsed_values.status == "入庫申請中" %}
+        入庫申請
+      {% elif item.parsed_values.status == "入庫持ち出し申請中" %}
+        入庫持ち出し申請
+      {% elif item.parsed_values.status == "入庫持ち出し譲渡申請中" %}
+        入庫持ち出し譲渡申請
+      {% elif item.parsed_values.status == "持ち出し申請中" %}
+        持ち出し申請
+      {% elif item.parsed_values.status == "持ち出し譲渡申請中" %}
+        持ち出し譲渡申請
+      {% elif item.parsed_values.status == "返却申請中" %}
+        返却申請
+      {% elif item.parsed_values.status == "破棄・譲渡申請中" %}
+        破棄・譲渡申請
+      {% else %}
+        {{ item['application_content']|default(item.parsed_values.status|default('')) }}
+      {% endif %}
+    </td>
+    <td>
+      <table class="detail-table">
+        {% for f in fields %}
+          <tr>
+            <th>{{ f.name }}</th>
+            <td>{{ show(item.parsed_values[f.key]|default('')) }}</td>
+          </tr>
+        {% endfor %}
+
+        {% if item.parsed_values.status in ["入庫持ち出し申請中","入庫持ち出し譲渡申請中","持ち出し申請中","持ち出し譲渡申請中"] %}
+          <tr><th>持ち出し開始日</th><td>{{ item.parsed_values.checkout_start_date|default('') }}</td></tr>
+          <tr><th>持ち出し終了日</th><td>{{ item.parsed_values.checkout_end_date|default('') }}</td></tr>
+          <tr>
+            <th>所有者リスト</th>
+            <td>
+              {% if item.owner_pairs and item.owner_pairs|length > 0 %}
+              <table style="border-collapse: collapse; font-size: 90%; margin-left: 10px;">
+                <tr><th>枝番</th><th>所有者</th></tr>
+                {% for b, owner in item.owner_pairs %}
+                  <tr><td style="padding:2px 8px;">{{ b }}</td><td style="padding:2px 8px;">{{ show(owner) }}</td></tr>
+                {% endfor %}
+              </table>
+              {% else %}（なし）{% endif %}
+            </td>
+          </tr>
+        {% endif %}
+
+        {% if item.parsed_values.status in ["入庫持ち出し譲渡申請中","持ち出し譲渡申請中"] %}
+          <tr><th>譲渡枝番</th><td>{{ item.parsed_values.transfer_branch_nos|default([])|join(', ') if item.parsed_values.transfer_branch_nos else '（なし）' }}</td></tr>
+          <tr><th>譲渡日</th><td>{{ item.parsed_values.transfer_date|default('') }}</td></tr>
+          <tr><th>譲渡コメント</th><td>{{ item.parsed_values.transfer_comment|default('') }}</td></tr>
+        {% endif %}
+
+        {% if item.parsed_values.status == "破棄・譲渡申請中" %}
+          <tr><th>種別</th><td>{{ item.parsed_values.dispose_type }}</td></tr>
+          <tr>
+            <th>対象枝番</th>
+            <td>
+              {% if item.parsed_values.target_child_branches %}
+                <ul style="margin:0 0 0 16px; padding:0;">
+                  {% for child in item.parsed_values.target_child_branches %}
+                    <li>
+                      {% if child.branch_no is defined %}
+                        枝番: {{ child.branch_no }}（子ID: {{ child.id }}）
+                      {% else %}
+                        子ID: {{ child.id }}
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}（なし）{% endif %}
+            </td>
+          </tr>
+          <tr><th>対応者</th><td>{{ show(item.parsed_values.handler) }}</td></tr>
+          <tr><th>破棄・譲渡日</th><td>{{ item.parsed_values.dispose_date|default('') }}</td></tr>
+          <tr><th>破棄・譲渡コメント</th><td>{{ item.parsed_values.dispose_comment|default('') }}</td></tr>
+        {% endif %}
+
+        {% if item.parsed_values.status == "返却申請中" %}
+          <tr><th>返却確認日</th><td>{{ item.parsed_values.return_date|default('') }}</td></tr>
+        {% endif %}
+      </table>
+    </td>
+    <td>{{ item['applicant_comment'] }}</td>
+    <td>{{ item['application_datetime'] }}</td>
+    <td>{{ item['status'] }}</td>
+    <td>
+    {% if item['status'] in ['承認', '差し戻し'] %}
+        {{ item['approval_datetime'] }}
+    {% endif %}
+    </td>
+    <td>{{ item['approver_comment'] }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<div style="margin-top:10px;">
+  <a href="{{ url_for('index_bp.index') }}">一覧に戻る</a>
+</div>
+{% endblock %}
