@@ -3,13 +3,18 @@ import os
 from werkzeug.security import generate_password_hash
 from services import get_db, FIELDS, logger
 
-SCHEMA_VERSION = 1
+# スキーマバージョンを 2 に引き上げ（users.last_login 追加）
+SCHEMA_VERSION = 2
 
 def _pragma(db):
     # SQLiteの推奨設定（必要に応じて調整）
     db.execute("PRAGMA foreign_keys = ON;")
     db.execute("PRAGMA journal_mode = WAL;")
     db.execute("PRAGMA synchronous = NORMAL;")
+
+def _column_exists(db, table: str, column: str) -> bool:
+    rows = db.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(r["name"] == column for r in rows)
 
 def init_db():
     """全テーブル作成（IF NOT EXISTS）。インデックスもこちらで。"""
@@ -34,7 +39,8 @@ def init_db():
                 password TEXT,
                 email TEXT,
                 department TEXT,
-                realname TEXT
+                realname TEXT,
+                last_login TEXT
             )
         """)
         db.execute("""
@@ -164,8 +170,20 @@ def get_version() -> int:
             return 0
 
 def upgrade():
-    """将来のマイグレーション用の土台（今は何もしない）。"""
+    """将来のマイグレーション用。v1→v2 で users.last_login を追加。"""
     with get_db() as db:
         _pragma(db)
-        # 例: if get_version() < 2: ... スキーマ変更 ...
+
+        current = get_version()
+        # v1 以前、もしくは安全側でカラムが無い場合に追加
+        if current < 2 or not _column_exists(db, "users", "last_login"):
+            # 既存DBに last_login が無ければ追加
+            if not _column_exists(db, "users", "last_login"):
+                db.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
+                logger.info("Added users.last_login column")
+
+            # スキーマバージョンを 2 に更新
+            db.execute("INSERT OR REPLACE INTO db_meta(key, value) VALUES('schema_version', ?)",
+                       (str(2),))
+
         db.commit()
