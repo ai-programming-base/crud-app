@@ -17,6 +17,7 @@ def build_application_mail(db, app_row, action: str, approver_comment: str = "")
     item_application の1件 (app_row) と action ('approve' | 'reject') から
     (to, subject, body) を返す。
     """
+    # sqlite3.Row は .get を持たないため dict 化
     if not isinstance(app_row, dict):
         app_row = dict(app_row)
 
@@ -122,6 +123,7 @@ def approval():
         except Exception:
             parsed['parsed_values'] = {}
 
+        # 所有者入力がある申請のプレビュー用：生きている枝番と再利用・追加割当
         pv = parsed.get('parsed_values', {})
         owners = pv.get('owner_list') or []
         if owners:
@@ -155,7 +157,7 @@ def approval():
         parsed_items.append(parsed)
     items = parsed_items
 
-    # 表示名マップ
+    # 表示名マップ（index と同様：部署 + 氏名（なければ username））
     user_rows = db.execute("""
         SELECT
             username,
@@ -193,13 +195,20 @@ def approval():
             app_row = db.execute("SELECT * FROM item_application WHERE id=?", (app_id,)).fetchone()
             if not app_row:
                 continue
+            app_row = dict(app_row)  # sqlite3.Row → dict に変換（▼ 追加：.get エラー対策）
+
             item_id = app_row['item_id']
-            new_values = json.loads(app_row['new_values'])
+            try:
+                new_values = json.loads(app_row['new_values'] or "{}")
+            except Exception:
+                new_values = {}
             status = new_values.get('status')
 
             if action == 'approve':
                 item_columns = set(FIELD_KEYS)
-                filtered_values = {k: v for k, v in new_values.items() if k in item_columns}
+                # new_values の一括反映から status を除外（状態は下の分岐でのみ更新）
+                filtered_values = {k: v for k, v in new_values.items()
+                                   if k in item_columns and k not in ('status',)}
                 set_clause = ", ".join([f"{k}=?" for k in filtered_values.keys()])
                 params = [filtered_values[k] for k in filtered_values.keys()]
                 if set_clause:
@@ -208,10 +217,12 @@ def approval():
                         params + [item_id]
                     )
 
+                # 入庫系列の承認者部門を approval_group に記録
                 approver_dept = (g.user['department'] or "").strip()
                 if status in ("入庫持ち出し譲渡申請中", "入庫持ち出し申請中", "入庫申請中"):
                     db.execute("UPDATE item SET approval_group=? WHERE id=?", (approver_dept, item_id))
 
+                # ▼ 各申請種別ごとの状態遷移（ここでのみ status を更新）
                 if status == "入庫持ち出し譲渡申請中":
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
@@ -301,13 +312,15 @@ def approval():
                     ).fetchall()
 
                     if not rows:
+                        # 子アイテムが未作成なら 1..n を作成
                         for idx, owner in enumerate(owners, 1):
                             db.execute(
                                 "INSERT INTO child_item (item_id, branch_no, owner, status, comment) VALUES (?, ?, ?, ?, ?)",
                                 (item_id, idx, owner, "持ち出し中", "")
                             )
                     else:
-                        alive = [r["branch_no"] for r in rows if r["status"] not in ("破棄","譲渡")]
+                        # 生存枝番の所有者だけ更新（破棄・譲渡は保持）
+                        alive = [r["branch_no"] for r in rows if r["status"] not in ("破棄", "譲渡")]
                         if len(owners) > len(alive):
                             flash(f"通し番号 {item_id}: 生きている枝番（{len(alive)}）より所有者が多い（{len(owners)}）ため、追加は行わず更新できません。")
                         else:
@@ -319,7 +332,7 @@ def approval():
                                         status = CASE WHEN status IN (?, ?) THEN status ELSE ? END
                                     WHERE item_id=? AND branch_no=?
                                     """,
-                                    ("破棄","譲渡", owner, "破棄","譲渡", "持ち出し中", item_id, branch_no)
+                                    ("破棄", "譲渡", owner, "破棄", "譲渡", "持ち出し中", item_id, branch_no)
                                 )
 
                     db.execute(
@@ -357,6 +370,7 @@ def approval():
                     transfer_dispose_date = new_values.get("dispose_date", "")
                     dispose_comment = new_values.get('dispose_comment', '')
 
+                    # 子アイテムの状態更新（破棄 or 譲渡）
                     new_status = "破棄" if dispose_type == "破棄" else "譲渡"
                     for target in target_child_branches:
                         cid = target["id"]
@@ -364,8 +378,14 @@ def approval():
                             "UPDATE child_item SET status=?, comment=?, owner=?, transfer_dispose_date=?  WHERE id=?",
                             (new_status, dispose_comment, '', transfer_dispose_date, cid)
                         )
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
 
+                    # 親アイテムの status は「元の状態」に戻す（元仕様の維持）
+                    original_status = app_row.get('original_status') or ""
+                    if original_status:
+                        db.execute("UPDATE item SET status=? WHERE id=?", (original_status, item_id))
+                    # original_status が無い場合は親の現行状態は変更しない（安全策）
+
+                # 申請レコードの状態更新＆履歴記録
                 db.execute('''
                     UPDATE item_application SET
                         approver_comment=?, approval_datetime=?, status=?
@@ -391,6 +411,7 @@ def approval():
                     "承認", now_str, comment
                 ))
 
+                # メール送信
                 to, subject, body = build_application_mail(db, app_row, action="approve", approver_comment=comment)
                 result = send_mail(to=to, subject=subject, body=body)
                 if result:
@@ -399,7 +420,7 @@ def approval():
                     flash("承認しました。メール送信に失敗しましたので、関係者への連絡をお願いします。")
 
             elif action == 'reject':
-                original_status = app_row['original_status']
+                original_status = app_row.get('original_status')
                 if original_status:
                     db.execute("UPDATE item SET status=? WHERE id=?", (original_status, item_id))
                 db.execute(
