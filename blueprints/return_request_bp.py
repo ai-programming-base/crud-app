@@ -15,6 +15,9 @@ from send_mail import send_mail
 
 return_request_bp = Blueprint("return_request_bp", __name__)
 
+# ▼ 返却申請を受け付ける item.status を一箇所で定義（後で変更したい場合はここだけ触ればOK）
+RETURN_ALLOWED_ITEM_STATUSES = ('持ち出し中',)
+
 @return_request_bp.route('/return_request', methods=['POST', 'GET'])
 @login_required
 @roles_required('admin', 'manager', 'proper')
@@ -35,14 +38,28 @@ def return_request():
         if not item_ids:
             flash("申請対象を選択してください")
             return redirect(url_for('index_bp.index'))
-        items = db.execute(
-            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(item_ids))})", item_ids
+
+        # ▼ 許可ステータス（持ち出し中）でフィルタ
+        rows_status = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+            item_ids
         ).fetchall()
-        not_accepted = [str(row['id']) for row in items if row['status'] != "持ち出し中"]
-        if not_accepted:
-            flash(f"持ち出し中でないアイテム（ID: {', '.join(not_accepted)}）は持ち出し終了申請できません。")
+        allowed_ids = [str(r['id']) for r in rows_status if r['status'] in RETURN_ALLOWED_ITEM_STATUSES]
+        excluded_ids = [str(r['id']) for r in rows_status if r['status'] not in RETURN_ALLOWED_ITEM_STATUSES]
+
+        if not allowed_ids:
+            flash(f"選択されたアイテムは申請対象の状態ではありません（許可: {', '.join(RETURN_ALLOWED_ITEM_STATUSES)}）。")
             return redirect(url_for('index_bp.index'))
 
+        if excluded_ids:
+            flash(f"許可外の状態のアイテムを除外しました（ID: {', '.join(excluded_ids)}）。")
+
+        items = db.execute(
+            f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})",
+            allowed_ids
+        ).fetchall()
+
+        # 元のロジック：サンプル数（破棄・譲渡を除いた枝番数）を計算
         item_list = []
         for item in items:
             item = dict(item)
@@ -84,6 +101,60 @@ def return_request():
             flash("全ての数量チェックを確認してください")
             return redirect(url_for('index_bp.index'))
 
+        # ▼ サーバ側でも状態を再確認（競合対策）
+        rows_status = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+            item_ids
+        ).fetchall()
+        not_allowed = [str(r['id']) for r in rows_status if r['status'] not in RETURN_ALLOWED_ITEM_STATUSES]
+        if not_allowed:
+            # 入力画面へ戻す（持ち出し中のみ残して再描画）
+            flash(
+                f"持ち出し中でないアイテム（ID: {', '.join(not_allowed)}）が含まれています。"
+                f"申請可能な状態は {', '.join(RETURN_ALLOWED_ITEM_STATUSES)} です。"
+            )
+            allowed_ids = [str(r['id']) for r in rows_status if r['status'] in RETURN_ALLOWED_ITEM_STATUSES]
+            if not allowed_ids:
+                return redirect(url_for('index_bp.index'))
+
+            # 再描画用 items 構築（元ロジックを踏襲）
+            items = db.execute(
+                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})",
+                allowed_ids
+            ).fetchall()
+            item_list = []
+            for item in items:
+                item = dict(item)
+                item_id = item['id']
+                child_total = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+                ).fetchone()[0]
+                if child_total == 0:
+                    item['sample_count'] = item.get('num_of_samples', 0)
+                else:
+                    cnt = db.execute(
+                        "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                        (item_id, "破棄", "譲渡")
+                    ).fetchone()[0]
+                    item['sample_count'] = cnt
+                item_list.append(item)
+
+            department = g.user['department']
+            all_managers = get_managers_by_department(None, db)
+            sorted_managers = (
+                [m for m in all_managers if m['department'] == department] +
+                [m for m in all_managers if m['department'] != department]
+            )
+            approver_default = sorted_managers[0]['username'] if sorted_managers else ''
+            # エラーメッセージは flash で出しているのでそのまま再表示
+            return render_template(
+                'return_form.html',
+                items=item_list, fields=INDEX_FIELDS,
+                approver_default=approver_default,
+                approver_list=sorted_managers,
+                user_display=user_display,
+            )
+
         applicant = g.user['username']
         applicant_comment = request.args.get('comment', '')
         approver = request.args.get('approver', '')
@@ -93,6 +164,11 @@ def return_request():
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for id in item_ids:
             item = db.execute("SELECT * FROM item WHERE id=?", (id,)).fetchone()
+
+            # ▼ 念押し：更新直前にも状態チェック（競合で状態が変わっていたらスキップ）
+            if item['status'] not in RETURN_ALLOWED_ITEM_STATUSES:
+                continue
+
             original_status = item['status']
 
             db.execute("UPDATE item SET status=? WHERE id=?", ("返却申請中", id))
