@@ -1,89 +1,277 @@
-{# templates/inventory_list.html #}
 {% extends "_base.html" %}
 
 {% block title %}棚卸し一覧{% endblock %}
 
 {% block head %}
 <style>
-    table { border-collapse: collapse; width: 98%; table-layout: fixed; }
-    th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; }
-    th { background: #eee; }
-    th.col-checkbox, td.col-checkbox {
-        width: 36px; min-width: 36px; max-width: 38px; text-align: center;
-    }
-    .main-btn {
-        background: #4285f4;
-        color: #fff;
-        border: none;
-        border-radius: 4px;
-        font-size: 1rem;
-        font-weight: bold;
-        padding: 6px 16px;
-        margin-right: 8px;
-        cursor: pointer;
-        text-decoration: none;
-        transition: background .15s;
-    }
-    .main-btn:hover { background: #23468e; color: #fff; }
-    .error-message { color: #db4437; font-weight: bold; margin: 8px 0; }
-    .back-link { margin-top: 16px; display: inline-block; color: #23468e; text-decoration: none; font-size: 15px; }
-    .back-link:hover { text-decoration: underline; }
-    .user-bar { width:98%; max-width:1300px; margin: 0 auto; display:flex; justify-content: flex-end; align-items:center;}
+  table { border-collapse: collapse; width: 98%; table-layout: fixed; }
+  th, td { border: 1px solid #aaa; padding: 5px; min-width: 90px; font-size: 14px; word-break: break-all; overflow-wrap: anywhere;}
+  th { background: #eee; }
+  th.col-checkbox, td.col-checkbox { width: 36px; min-width: 36px; max-width: 38px; text-align: center; }
+
+  .main-btn {
+    background: #4285f4; color: #fff; border: none; border-radius: 4px;
+    font-size: 1rem; font-weight: bold; padding: 6px 16px; margin-right: 8px;
+    cursor: pointer; text-decoration: none; transition: background .15s;
+  }
+  .main-btn:hover { background: #23468e; color: #fff; }
+
+  .pagination a, .pagination strong { margin: 0 3px; padding: 3px 9px; border-radius: 4px; background: #eee; text-decoration: none; color: #333; }
+  .pagination strong { background: #4285f4; color: #fff; }
+  .summary { font-size: 14px; color: #555; margin-bottom: 8px; }
+
+  .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
+  .filter-cell-input { cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7; }
+  .filter-dropdown {
+    display:none; position:absolute; left:0; top:25px; z-index:9999; /* ←前面に */
+    min-width:140px; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 12px rgba(0,0,0,.15);
+  }
+  .filter-clear {
+    position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; border-radius: 50%; background: #ccc; color: white;
+    font-weight: bold; font-size: 12px; line-height: 16px; text-align: center; cursor: pointer; user-select: none; display: none;
+  }
+  .filter-clear:hover { background: #999; }
 </style>
+
 <script>
-    function toggleSelectAll(chk) {
-        let checks = document.querySelectorAll('.rowcheck');
-        checks.forEach(e => e.checked = chk.checked);
+// ====== フィルタセル（index と同仕様）：セルクリックで編集開始、候補ドロップダウン、Enter送信、×でクリア ======
+document.addEventListener('DOMContentLoaded', function () {
+  // 1) 全選択（左上）→ データ表のチェックを一括制御
+  const selectAll = document.getElementById('select-all');
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      document.querySelectorAll('form[action$="inventory_check"] input[name="selected_ids"]:not(:disabled)')
+        .forEach(cb => { cb.checked = selectAll.checked; cb.dispatchEvent(new Event('change', { bubbles: true })); });
+    });
+  }
+
+  // 2) フィルタの編集 UI
+  var filterChoices = {{ filter_choices_dict | tojson }};
+  document.querySelectorAll('.filter-row td[data-filter-editable="true"]').forEach(function(td){
+    const col = td.dataset.col;
+    const div = td.querySelector('.filter-cell-input');
+    const hidden = td.querySelector('input[type="hidden"]');
+    const dropdown = td.querySelector('.filter-dropdown');
+
+    // 安定のため position:relative を確保
+    if (getComputedStyle(td).position === 'static') td.style.position = 'relative';
+
+    let choices = (filterChoices[col] || []).slice();
+    let state = { open:false, value:div.textContent.trim(), filtered:choices.slice(), selected:-1 };
+
+    // クリアボタン
+    let clearBtn = td.querySelector('.filter-clear');
+    if (!clearBtn) {
+      clearBtn = document.createElement('div');
+      clearBtn.className = 'filter-clear';
+      clearBtn.title = 'クリア';
+      clearBtn.textContent = '×';
+      td.appendChild(clearBtn);
     }
+    function showOrHideClear() {
+      const hasValue = (div.textContent.trim() || (hidden && hidden.value.trim()));
+      clearBtn.style.display = hasValue ? 'block' : 'none';
+    }
+    showOrHideClear();
+
+    clearBtn.addEventListener('mousedown', function(e){
+      e.preventDefault(); e.stopPropagation();
+      div.textContent = '';
+      if (hidden) hidden.value = '';
+      state.value = '';
+      state.selected = -1;
+      updateDropdown(); closeDropdown(); showOrHideClear();
+      setTimeout(function(){ document.getElementById('filter-form').submit(); }, 10);
+    });
+
+    function openDropdown(){ state.open = true; dropdown.style.display='block'; updateDropdown(); }
+    function closeDropdown(){ state.open = false; dropdown.style.display='none'; state.selected=-1; }
+    function updateDropdown(){
+      let txt = state.value;
+      let filtered = !txt ? choices.slice() : choices.filter(v => v && v.indexOf(txt) !== -1);
+      state.filtered = filtered;
+      dropdown.innerHTML = '';
+      filtered.forEach((v, idx) => {
+        let opt = document.createElement('div');
+        opt.textContent = v;
+        opt.tabIndex = -1;
+        opt.style.cssText = 'padding:4px 8px; cursor:pointer;';
+        if (idx === state.selected) opt.style.background = '#b1dafc';
+        opt.addEventListener('mousedown', function(e){ e.preventDefault(); choose(idx); });
+        dropdown.appendChild(opt);
+      });
+    }
+    function choose(idx){
+      let v = state.filtered[idx] || '';
+      div.textContent = v;
+      if (hidden) hidden.value = v;
+      closeDropdown();
+      setTimeout(function(){ document.getElementById('filter-form').submit(); }, 10);
+    }
+    function startEdit(){
+      // クリック時に必ず編集化＆候補オープン
+      div.contentEditable = true;
+      div.focus();
+      // キャレットを末尾へ
+      const sel = window.getSelection(); const r = document.createRange();
+      r.selectNodeContents(div); r.collapse(false); sel.removeAllRanges(); sel.addRange(r);
+      state.value = div.textContent.trim();
+      state.selected=-1;
+      openDropdown(); updateDropdown();
+    }
+    function finishEdit(){
+      div.contentEditable = false;
+      closeDropdown();
+      div.textContent = state.value;
+      if (hidden) hidden.value = state.value;
+      showOrHideClear();
+    }
+
+    // td または div クリックで開始（index と同様）
+    td.addEventListener('click', function(e){
+      // × クリックは除外
+      if (e.target.classList.contains('filter-clear')) return;
+      if (!state.open) startEdit();
+    });
+    div.addEventListener('input', function(){
+      state.value = div.textContent.trim();
+      state.selected=-1;
+      updateDropdown(); showOrHideClear();
+      // 入力変化で軽くディレイして送信（Enter不要）
+      clearTimeout(div.__t);
+      div.__t = setTimeout(function(){ document.getElementById('filter-form').submit(); }, 400);
+    });
+    div.addEventListener('keydown', function(e){
+      if (!state.open && e.key === 'Enter') { e.preventDefault(); document.getElementById('filter-form').submit(); return; }
+      if (!state.open) return;
+      if (e.key === 'ArrowDown'){ e.preventDefault(); if (state.selected < state.filtered.length-1){ state.selected++; updateDropdown(); } }
+      else if (e.key === 'ArrowUp'){ e.preventDefault(); if (state.selected > 0){ state.selected--; updateDropdown(); } }
+      else if (e.key === 'Enter'){
+        e.preventDefault();
+        if (state.selected>=0 && state.filtered.length){ choose(state.selected); }
+        else { finishEdit(); setTimeout(()=>document.getElementById('filter-form').submit(),10); }
+      }
+      else if (e.key === 'Escape'){ e.preventDefault(); finishEdit(); }
+    });
+    div.addEventListener('blur', function(){
+      // メニュークリックを拾えるように少し遅らせて確定
+      setTimeout(finishEdit, 150);
+    });
+  });
+});
 </script>
 {% endblock %}
 
 {% block content %}
 <h1>棚卸し一覧</h1>
+
 {% with messages = get_flashed_messages() %}
   {% if messages %}
-    <div class="error-message">
-      {% for msg in messages %}
-        {{ msg }}<br>
-      {% endfor %}
+    <div class="summary">
+      {% for msg in messages %}{{ msg }}<br>{% endfor %}
     </div>
   {% endif %}
 {% endwith %}
-<form method="post" action="{{ url_for('inventory_bp.inventory_check') }}">
-    <table>
-        <tr>
-            <th class="col-checkbox"><input type="checkbox" onclick="toggleSelectAll(this)"></th>
-            <th class="col-id">ID</th>
-            {% for field in fields %}
-              <th>{{ field.name }}</th>
-            {% endfor %}
-            <th>最終棚卸し日</th>
-            <th>最終実施者</th>
-            <th>履歴</th>
-        </tr>
-        {% for item in items %}
-        <tr>
-            <td class="col-checkbox"><input type="checkbox" class="rowcheck" name="selected_ids" value="{{ item['id'] }}"></td>
-            <td class="col-id">{{ item['id'] }}</td>
-            {% for field in fields %}
-              {% if field.key == 'sample_manager' %}
-                <td>{{ user_display.get(item[field.key], item[field.key]) }}</td>
-              {% else %}
-                <td>{{ item[field.key] }}</td>
-              {% endif %}
-            {% endfor %}
-            <td>{{ item['last_checked_at'] or '-' }}</td>
-            {% set lc = item['last_checker'] %}
-            <td>{{ user_display.get(lc, lc) if lc else '-' }}</td>
-            <td>
-              <a href="{{ url_for('inventory_bp.inventory_history', item_id=item['id']) }}" style="color:#3161c4;text-decoration:underline;">履歴</a>
-            </td>
-        </tr>
-        {% endfor %}
-    </table>
-    <div style="margin:14px 0;">
-        <button type="submit" class="main-btn" onclick="return confirm('選択したアイテムの棚卸しを登録しますか？')">棚卸し完了</button>
-        <a href="{{ url_for('index') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">一覧へ</a>
-    </div>
+
+<!-- ===== 1行目：フィルタ＋タイトル（←ここに全選択チェックも固定） ===== -->
+<form id="filter-form" method="get" action="{{ url_for('inventory_bp.inventory_list') }}">
+  <input type="hidden" name="per_page" value="{{ per_page }}">
+  <table>
+    <tr>
+      <th class="col-checkbox">
+        <input type="checkbox" id="select-all">
+      </th>
+      <th class="col-id">ID</th>
+      {% for f in fields %}
+        <th>{{ f.name }}</th>
+      {% endfor %}
+      <th>最終棚卸し日</th>
+      <th>最終実施者</th>
+      <th>履歴</th>
+    </tr>
+    <tr class="filter-row">
+      <td class="col-checkbox"></td>
+      <!-- ID -->
+      <td class="filter-cell" data-filter-editable="true" data-col="id" style="position:relative;">
+        <div class="filter-cell-input" tabindex="0" data-col="id">{{ filters.get('id', '') }}</div>
+        <input type="hidden" name="id_filter" value="{{ filters.get('id', '') }}">
+        <div class="filter-dropdown"></div>
+        <div class="filter-clear">×</div>
+      </td>
+      <!-- 各カラム -->
+      {% for f in fields %}
+      <td class="filter-cell" data-filter-editable="true" data-col="{{ f.key }}" style="position:relative;">
+        <div class="filter-cell-input" tabindex="0" data-col="{{ f.key }}">{{ filters.get(f.key, '') }}</div>
+        <input type="hidden" name="{{ f.key }}_filter" value="{{ filters.get(f.key, '') }}">
+        <div class="filter-dropdown"></div>
+        <div class="filter-clear">×</div>
+      </td>
+      {% endfor %}
+      <!-- 末尾 3 列（ボタンは不要とのことなので空セル） -->
+      <td></td>
+      <td></td>
+      <td></td>
+    </tr>
+  </table>
 </form>
+
+<!-- ===== データ表（タイトル行は出さない） ===== -->
+<form method="post" action="{{ url_for('inventory_bp.inventory_check') }}">
+  <table>
+    {% for item in items %}
+    <tr>
+      <td class="col-checkbox"><input type="checkbox" class="rowcheck" name="selected_ids" value="{{ item['id'] }}"></td>
+      <td class="col-id">{{ item['id'] }}</td>
+      {% for field in fields %}
+        {% if field.key == 'sample_manager' %}
+          <td>{{ user_display.get(item[field.key], item[field.key]) }}</td>
+        {% else %}
+          <td>{{ item[field.key] }}</td>
+        {% endif %}
+      {% endfor %}
+      <td>{{ item['last_checked_at'] or '-' }}</td>
+      {% set lc = item['last_checker'] %}
+      <td>{{ user_display.get(lc, lc) if lc else '-' }}</td>
+      <td><a href="{{ url_for('inventory_bp.inventory_history', item_id=item['id']) }}" style="color:#3161c4;text-decoration:underline;">履歴</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <div style="margin:14px 0;">
+    <button type="submit" class="main-btn" onclick="return confirm('選択したアイテムの棚卸しを登録しますか？')">棚卸し完了</button>
+    <a href="{{ url_for('index_bp.index') }}" class="main-btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">一覧へ</a>
+  </div>
+
+  <!-- ページャ -->
+  <div class="pagination" style="margin:16px 0 8px 0;">
+    {% for p in range(1, page_count+1) %}
+      {% if p == page %}
+        <strong>{{p}}</strong>
+      {% else %}
+        <a href="{{ url_for('inventory_bp.inventory_list', page=p, per_page=per_page, **filters) }}">{{p}}</a>
+      {% endif %}
+    {% endfor %}
+    <span class="summary">全 {{ total }} 件</span>
+  </div>
+</form>
+
+<!-- 表示件数セレクタ -->
+<div style="margin:10px 0 10px 0; display:flex; align-items:center;">
+  <form method="get" id="per-page-form" style="display:inline;">
+    {% for k, v in filters.items() %}
+      {% if v %}
+        <input type="hidden" name="{{k}}_filter" value="{{v}}">
+      {% endif %}
+    {% endfor %}
+    <select name="per_page" onchange="document.getElementById('per-page-form').submit()" style="font-size:14px; padding:4px 6px;">
+      <option value="20" {% if per_page == '20' %}selected{% endif %}>20件</option>
+      <option value="50" {% if per_page == '50' %}selected{% endif %}>50件</option>
+      <option value="100" {% if per_page == '100' %}selected{% endif %}>100件</option>
+      <option value="all" {% if per_page == 'all' %}selected{% endif %}>全て</option>
+    </select>
+    <input type="hidden" name="page" value="1">
+  </form>
+  <span style="margin-left:12px;">表示件数の変更</span>
+</div>
 {% endblock %}

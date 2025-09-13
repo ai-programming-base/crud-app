@@ -18,56 +18,120 @@ def inventory_list():
     username = g.user['username']
     user_roles = g.user_roles
 
-    if 'admin' in user_roles or 'manager' in user_roles:
-        items = db.execute('''
-            SELECT i.*, 
-                ic.checked_at as last_checked_at, 
-                ic.checker as last_checker
-            FROM item i
-            LEFT JOIN (
-                SELECT a.item_id, a.checked_at, a.checker
-                FROM inventory_check a
-                INNER JOIN (
-                    SELECT item_id, MAX(checked_at) as max_checked
-                    FROM inventory_check GROUP BY item_id
-                ) b
-                ON a.item_id = b.item_id AND a.checked_at = b.max_checked
-            ) ic ON i.id = ic.item_id
-            ORDER BY i.id DESC
-        ''').fetchall()
-    elif 'proper' in user_roles:
-        items = db.execute('''
-            SELECT i.*, 
-                ic.checked_at as last_checked_at, 
-                ic.checker as last_checker
-            FROM item i
-            LEFT JOIN (
-                SELECT a.item_id, a.checked_at, a.checker
-                FROM inventory_check a
-                INNER JOIN (
-                    SELECT item_id, MAX(checked_at) as max_checked
-                    FROM inventory_check GROUP BY item_id
-                ) b
-                ON a.item_id = b.item_id AND a.checked_at = b.max_checked
-            ) ic ON i.id = ic.item_id
-            WHERE i.sample_manager = ?
-            ORDER BY i.id DESC
-        ''', (username,)).fetchall()
+    # ===== ページング =====
+    per_page_raw = request.args.get('per_page', '20')
+    if per_page_raw == 'all':
+        per_page = None
+        page = 1
+        offset = 0
     else:
-        items = []
+        per_page = int(per_page_raw)
+        page = int(request.args.get('page', 1))
+        offset = (page - 1) * per_page
 
-    # realname 優先の表示名マップ
+    # ===== 表示名マップ & realname -> username 逆引き =====
     user_rows = db.execute("""
         SELECT username,
                COALESCE(NULLIF(realname, ''), username) AS display_name
         FROM users
     """).fetchall()
     user_display = {r["username"]: r["display_name"] for r in user_rows}
+    display_to_username = {}
+    for u, d in user_display.items():
+        display_to_username.setdefault(d, u)
 
-    return render_template('inventory_list.html',
-                           items=items,
-                           fields=INDEX_FIELDS,
-                           user_display=user_display)
+    # ===== フィルタ構築 =====
+    filters = {}
+    where = []
+    params = []
+
+    id_filter = request.args.get("id_filter", "").strip()
+    filters["id"] = id_filter
+    if id_filter:
+        where.append("CAST(i.id AS TEXT) LIKE ?")
+        params.append(f"%{id_filter}%")
+
+    for f in INDEX_FIELDS:
+        key = f["key"]
+        v = request.args.get(f"{key}_filter", "").strip()
+        if key == "sample_manager" and v:
+            normalized = display_to_username.get(v, v)  # realname -> username
+            filters[key] = v  # 表示はrealnameのまま
+            where.append(f"i.{key} LIKE ?")
+            params.append(f"%{normalized}%")
+        else:
+            filters[key] = v
+            if v:
+                where.append(f"i.{key} LIKE ?")
+                params.append(f"%{v}%")
+
+    # proper は自分の分のみ
+    if 'proper' in user_roles and not ('admin' in user_roles or 'manager' in user_roles):
+        where.append("i.sample_manager = ?")
+        params.append(username)
+
+    where_clause = "WHERE " + " AND ".join(where) if where else ""
+
+    # ===== データ取得（最新棚卸し情報をJOIN）=====
+    rows_all = db.execute(f"""
+        SELECT i.*,
+               ic.checked_at AS last_checked_at,
+               ic.checker    AS last_checker
+        FROM item i
+        LEFT JOIN (
+            SELECT a.item_id, a.checked_at, a.checker
+            FROM inventory_check a
+            INNER JOIN (
+                SELECT item_id, MAX(checked_at) AS max_checked
+                FROM inventory_check GROUP BY item_id
+            ) b
+            ON a.item_id = b.item_id AND a.checked_at = b.max_checked
+        ) ic ON i.id = ic.item_id
+        {where_clause}
+        ORDER BY i.id DESC
+    """, params).fetchall()
+
+    total = len(rows_all)
+    if per_page is not None:
+        items = rows_all[offset:offset + per_page]
+    else:
+        items = rows_all
+
+    # ===== フィルタ候補辞書 =====
+    filter_choices_dict = {}
+    for f in INDEX_FIELDS:
+        col = f["key"]
+        r = db.execute(f"""
+            SELECT DISTINCT {col}
+            FROM item
+            WHERE {col} IS NOT NULL AND {col} != ''
+        """).fetchall()
+        if col == "sample_manager":
+            usernames = {str(row[col]) for row in r if row[col] not in (None, '')}
+            display_names = {user_display.get(u, u) for u in usernames}
+            filter_choices_dict[col] = sorted(display_names)
+        else:
+            filter_choices_dict[col] = sorted({str(row[col]) for row in r if row[col] not in (None, '')})
+
+    id_rows = db.execute("SELECT id FROM item ORDER BY id DESC").fetchall()
+    filter_choices_dict["id"] = [str(r["id"]) for r in id_rows]
+
+    # ===== ページ数 =====
+    page_count = 1 if per_page is None else max(1, (total + per_page - 1) // per_page)
+
+    return render_template(
+        'inventory_list.html',
+        items=items,
+        fields=INDEX_FIELDS,
+        user_display=user_display,
+        # フィルタ/ページング用
+        filters=filters,
+        per_page=per_page_raw,
+        page=page,
+        page_count=page_count,
+        total=total,
+        filter_choices_dict=filter_choices_dict,
+    )
 
 @inventory_bp.route('/inventory_check', methods=['POST'])
 @login_required
