@@ -121,25 +121,19 @@
       font-size: 14px;
       color: #c62828;
       margin-left: 4px;
-      cursor: help; /* ホバーでヘルプカーソル */
+      cursor: help;
       user-select: none;
     }
-    /* 行が半透明でも鍵だけははっきり見せたい場合 */
     .locked-row .lock-icon { opacity: 1; }
-    /* 行クリック可能の見た目 */
     #main-form table tr { cursor: pointer; transition: background-color .12s ease; }
     #main-form table tr.locked-row { cursor: default; }
-    #main-form table tr:not(.locked-row):hover td {
-      background: #eef6ff;  /* 好みで #e9f1ff などに変更可 */
-    }
-    #main-form table tr.locked-row:hover td {
-      background: inherit;
-    }
+    #main-form table tr:not(.locked-row):hover td { background: #eef6ff; }
+    #main-form table tr.locked-row:hover td { background: inherit; }
     .button-link {
       display: inline-block;
       padding: 6px 12px;
-      background: #1976d2;     /* ボタンの色と合わせて */
-      color: black;            /* ←ここをblackに */
+      background: #1976d2;
+      color: black;
       border: none;
       border-radius: 4px;
       text-decoration: none;
@@ -148,9 +142,7 @@
       text-align: center;
       transition: background 0.2s;
     }
-    .button-link:hover {
-      background: #115293;
-    }
+    .button-link:hover { background: #115293; }
 </style>
 
 <script>
@@ -282,7 +274,7 @@ document.addEventListener('DOMContentLoaded', function () {
                   updateDropdown();
               }
           } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
+              e.prevent防止;
               if (state.selected > 0) {
                   state.selected--;
                   updateDropdown();
@@ -335,127 +327,47 @@ document.addEventListener('DOMContentLoaded', function () {
   updateCounter();
 });
 
-// 操作用関数群
-function submitDelete() {
-  var form = document.getElementById('main-form');
-  form.action = "{{ url_for('raise_request_bp.delete_selected') }}";
-  form.method = "POST";
-  form.submit();
-}
-
-function submitApplyRequest() {
-  var form = document.getElementById('main-form');
-  form.action = "{{ url_for('entry_request_bp.entry_request') }}";
-  form.method = "POST";
-  form.submit();
-}
-
-function submitCheckoutRequest() {
-  var form = document.getElementById('main-form');
-  form.action = "{{ url_for('checkout_request') }}";
-  form.method = "POST";
-  form.submit();
-}
-
-function showChildItems() {
-  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-  if (checked.length < 1) {
-    alert("通し番号を1件以上選択してください");
-    return;
-  }
-  let ids = Array.from(checked).map(cb => cb.value).join(',');
-  window.location.href = "/child_items?ids=" + encodeURIComponent(ids);
-}
-
-function bulkManagerChange() {
-  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-  if (checked.length < 1) {
-    alert("通し番号を1件以上選択してください");
-    return;
-  }
-  let ids = Array.from(checked).map(cb => cb.value).join(',');
-  window.location.href = "/bulk_manager_change?ids=" + encodeURIComponent(ids);
-}
-
-function submitReturnRequest() {
-  var form = document.getElementById('main-form');
-  form.action = "{{ url_for('return_request_bp.return_request') }}";
-  form.method = "POST";
-  form.submit();
-}
-
-function changeOwners() {
-  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-  if (checked.length < 1) {
-    alert("通し番号を1件以上選択してください");
-    return;
-  }
-  let ids = Array.from(checked).map(cb => cb.value).join(',');
-  window.location.href = "/change_owner?ids=" + encodeURIComponent(ids);
-}
-
-function submitDisposeTransferRequest() {
-  var form = document.getElementById('main-form');
-  form.action = "{{ url_for('dispose_transfer_request_bp.dispose_transfer_request') }}";
-  form.method = "POST";
-  form.submit();
-}
-
-function copyToAdd() {
-  const checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-  if (checked.length !== 1) {
-    alert("コピー起票するアイテムを1件だけ選択してください");
-    return;
-  }
-  const id = checked[0].value;
-  window.location.href = "/raise_request?copy_id=" + encodeURIComponent(id);
-}
-
-function showPrintLabels() {
-  let checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-  if (checked.length < 1) {
-    alert("1件以上選択してください");
-    return;
-  }
-  let ids = Array.from(checked).map(cb => cb.value).join(',');
-  window.open("/print_labels?ids=" + encodeURIComponent(ids), "_blank");
-}
-
-function bulkEdit() {
-  const checked = document.querySelectorAll('input[name="selected_ids"]:checked');
-  if (checked.length < 1) {
-    alert("通し番号を1件以上選択してください");
-    return;
-  }
-  const ids = Array.from(checked).map(cb => cb.value).join(',');
-  window.location.href = "/bulk_edit?ids=" + encodeURIComponent(ids);
-}
-
-function unlockMyLocks() {
-  if (!confirm('自分がロックしているアイテムの編集をすべて解除します。よろしいですか？')) return;
-  document.getElementById('unlock-form').submit();
-}
+// 操作用関数群（既存のまま）
+function submitDelete() { var form = document.getElementById('main-form'); form.action = "{{ url_for('raise_request_bp.delete_selected') }}"; form.method = "POST"; form.submit(); }
+function submitApplyRequest() { var form = document.getElementById('main-form'); form.action = "{{ url_for('entry_request_bp.entry_request') }}"; form.method = "POST"; form.submit(); }
+function submitCheckoutRequest() { var form = document.getElementById('main-form'); form.action = "{{ url_for('checkout_request') }}"; form.method = "POST"; form.submit(); }
+function showChildItems() { let checked = document.querySelectorAll('input[name="selected_ids"]:checked'); if (checked.length < 1) { alert("通し番号を1件以上選択してください"); return; } let ids = Array.from(checked).map(cb => cb.value).join(','); window.location.href = "/child_items?ids=" + encodeURIComponent(ids); }
+function bulkManagerChange() { let checked = document.querySelectorAll('input[name="selected_ids"]:checked'); if (checked.length < 1) { alert("通し番号を1件以上選択してください"); return; } let ids = Array.from(checked).map(cb => cb.value).join(','); window.location.href = "/bulk_manager_change?ids=" + encodeURIComponent(ids); }
+function submitReturnRequest() { var form = document.getElementById('main-form'); form.action = "{{ url_for('return_request_bp.return_request') }}"; form.method = "POST"; form.submit(); }
+function changeOwners() { let checked = document.querySelectorAll('input[name="selected_ids"]:checked'); if (checked.length < 1) { alert("通し番号を1件以上選択してください"); return; } let ids = Array.from(checked).map(cb => cb.value).join(','); window.location.href = "/change_owner?ids=" + encodeURIComponent(ids); }
+function submitDisposeTransferRequest() { var form = document.getElementById('main-form'); form.action = "{{ url_for('dispose_transfer_request_bp.dispose_transfer_request') }}"; form.method = "POST"; form.submit(); }
+function copyToAdd() { const checked = document.querySelectorAll('input[name="selected_ids"]:checked'); if (checked.length !== 1) { alert("コピー起票するアイテムを1件だけ選択してください"); return; } const id = checked[0].value; window.location.href = "/raise_request?copy_id=" + encodeURIComponent(id); }
+function showPrintLabels() { let checked = document.querySelectorAll('input[name="selected_ids"]:checked'); if (checked.length < 1) { alert("1件以上選択してください"); return; } let ids = Array.from(checked).map(cb => cb.value).join(','); window.open("/print_labels?ids=" + encodeURIComponent(ids), "_blank"); }
+function bulkEdit() { const checked = document.querySelectorAll('input[name="selected_ids"]:checked'); if (checked.length < 1) { alert("通し番号を1件以上選択してください"); return; } const ids = Array.from(checked).map(cb => cb.value).join(','); window.location.href = "/bulk_edit?ids=" + encodeURIComponent(ids); }
+function unlockMyLocks() { if (!confirm('自分がロックしているアイテムの編集をすべて解除します。よろしいですか？')) return; document.getElementById('unlock-form').submit(); }
 
 // ====== 行クリックでチェックボックスをトグル ======
 document.addEventListener('DOMContentLoaded', function () {
   const dataTable = document.querySelector('#main-form table');
   if (!dataTable) return;
-
   dataTable.addEventListener('click', function (e) {
-    // 入力系やリンク上のクリックは素通し
     const tag = e.target.tagName.toLowerCase();
     if (['input','button','a','select','textarea','label'].includes(tag)) return;
-
     const tr = e.target.closest('tr');
     if (!tr) return;
-
     const cb = tr.querySelector('input[type="checkbox"][name="selected_ids"]');
-    if (!cb || cb.disabled) return; // ロック行はdisabledなので何もしない
-
+    if (!cb || cb.disabled) return;
     cb.checked = !cb.checked;
-    // 選択カウンタ更新のために change を飛ばす
     cb.dispatchEvent(new Event('change', { bubbles: true }));
   });
+});
+
+// ====== 1行目（フィルタ表）左端「全選択」で一括ON/OFF ======
+document.addEventListener('DOMContentLoaded', function () {
+  const selectAll = document.getElementById('select-all'); // ← フィルタ表のタイトル行に配置
+  if (selectAll) {
+    selectAll.addEventListener('change', function () {
+      document.querySelectorAll('#main-form input[name="selected_ids"]:not(:disabled)').forEach(cb => {
+        cb.checked = selectAll.checked;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    });
+  }
 });
 </script>
 {% endblock %}
@@ -495,7 +407,6 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
     {% endif %}
 
-    {# 承認メニュー: admin / manager のみ #}
     {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
     <div class="dropdown">
       <button class="dropbtn">承認</button>
@@ -544,11 +455,14 @@ document.addEventListener('DOMContentLoaded', function () {
 {% endif %}
 {% endwith %}
 
+<!-- ===== 1行目：フィルタ＋タイトル（ここに全選択チェック） ===== -->
 <form id="filter-form" method="get" action="{{ url_for('index') }}">
   <input type="hidden" name="per_page" value="{{ per_page }}">
   <table>
     <tr>
-      <th class="col-checkbox"></th>
+      <th class="col-checkbox">
+        <input type="checkbox" id="select-all">
+      </th>
       <th class="col-id">ID</th>
       {% for f in fields %}
       <th>{{ f.name }}{% if f.required %}<span style="color:#db4437;">*</span>{% endif %}</th>
@@ -595,6 +509,7 @@ document.addEventListener('DOMContentLoaded', function () {
   </table>
 </form>
 
+<!-- ===== データ表（タイトル行は出さない＝3行目の重複を排除） ===== -->
 <form id="main-form" method="post">
   <table>
     {% for item in items %}
