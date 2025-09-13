@@ -17,12 +17,21 @@
 {% endblock %}
 
 {% block content %}
-<h1>自分が申請したアイテム</h1>
+<h1>申請アイテム一覧</h1>
 <div style="margin-bottom:20px;">
-    <a href="{{ url_for('my_applications_bp.my_applications', status='all') }}" class="btn{% if status=='all' %} selected{% endif %}">全て</a>
-    <a href="{{ url_for('my_applications_bp.my_applications', status='pending') }}" class="btn{% if status=='pending' %} selected{% endif %}">未承認</a>
-    <a href="{{ url_for('my_applications_bp.my_applications', status='approved') }}" class="btn{% if status=='approved' %} selected{% endif %}">承認済み</a>
-    <a href="{{ url_for('index_bp.index') }}" class="btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">戻る</a>
+<div style="margin-bottom:20px;">
+    <a href="{{ url_for('my_applications_bp.my_applications', status='all') }}"
+       class="btn{% if status=='all' %} selected{% endif %}">全て</a>
+    <a href="{{ url_for('my_applications_bp.my_applications', status='pending') }}"
+       class="btn{% if status=='pending' %} selected{% endif %}">申請中</a>
+    <a href="{{ url_for('my_applications_bp.my_applications', status='approved') }}"
+       class="btn{% if status=='approved' %} selected{% endif %}">承認済み</a>
+    <a href="{{ url_for('my_applications_bp.my_applications', status='remanded') }}"
+       class="btn{% if status=='remanded' %} selected{% endif %}">差し戻し</a>
+
+    <a href="{{ url_for('index_bp.index') }}"
+       class="btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">戻る</a>
+</div>
 </div>
 <table>
     <tr>

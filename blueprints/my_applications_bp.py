@@ -11,10 +11,13 @@ def my_applications():
     db = get_db()
     params = [g.user['username']]
     where = "applicant=?"
+
     if status == "approved":
         where += " AND status='承認'"
+    elif status == "remanded":
+        where += " AND status='差し戻し'"
     elif status == "pending":
-        where += " AND status!='承認'"
+        where += " AND status NOT IN ('承認','差し戻し')"
 
     apps = db.execute(f"""
         SELECT * FROM item_application
