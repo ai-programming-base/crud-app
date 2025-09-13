@@ -10,6 +10,9 @@ from services import (
 
 bulk_edit_bp = Blueprint("bulk_edit_bp", __name__)
 
+# 一括編集を許可する item.status を一箇所で定義
+BULK_EDIT_ALLOWED_ITEM_STATUSES = ('入庫前', '入庫', '持ち出し中', '返却済')
+
 @bulk_edit_bp.route('/bulk_edit')
 @login_required
 def bulk_edit():
@@ -26,8 +29,24 @@ def bulk_edit():
 
     db = get_db()
 
-    # 他ユーザーによる編集中チェック＆ロック取得
-    ok, blocked = acquire_locks(db, ids, g.user['username'])
+    # 許可ステータスでフィルタ（入庫前／入庫／持ち出し中／返却済）
+    placeholders = ",".join(["?"] * len(ids))
+    rows_status = db.execute(
+        f"SELECT id, status FROM item WHERE id IN ({placeholders})",
+        ids
+    ).fetchall()
+    allowed_ids = [str(r['id']) for r in rows_status if r['status'] in BULK_EDIT_ALLOWED_ITEM_STATUSES]
+    excluded_ids = [str(r['id']) for r in rows_status if r['status'] not in BULK_EDIT_ALLOWED_ITEM_STATUSES]
+
+    if excluded_ids:
+        flash(f"許可外の状態のアイテムを除外しました（ID: {', '.join(excluded_ids)}）。"
+              f"許可状態: {', '.join(BULK_EDIT_ALLOWED_ITEM_STATUSES)}")
+    if not allowed_ids:
+        flash(f"選択されたアイテムは一括編集の対象状態ではありません（許可: {', '.join(BULK_EDIT_ALLOWED_ITEM_STATUSES)}）。")
+        return redirect(url_for('index_bp.index'))
+
+    # 他ユーザーによる編集中チェック＆ロック取得（▼ 許可IDのみ）
+    ok, blocked = acquire_locks(db, allowed_ids, g.user['username'])
     if not ok:
         flash("以下のIDは他ユーザーが編集中のため編集できません: " + ", ".join(blocked))
         return redirect(url_for('index_bp.index'))
@@ -43,10 +62,10 @@ def bulk_edit():
 
     # 編集対象の取得（index と同じ項目セット）
     user_field_keys = [f['key'] for f in FIELDS if not f.get('internal', False) and f.get('show_in_index', True)]
-    placeholders = ",".join(["?"] * len(ids))
+    placeholders_allowed = ",".join(["?"] * len(allowed_ids))
     rows = db.execute(
-        f"SELECT * FROM item WHERE id IN ({placeholders}) ORDER BY id DESC",
-        ids
+        f"SELECT * FROM item WHERE id IN ({placeholders_allowed}) ORDER BY id DESC",
+        allowed_ids
     ).fetchall()
     items = [dict(r) for r in rows]
 
@@ -64,17 +83,33 @@ def bulk_edit_commit():
     db = get_db()
     ids = request.form.getlist('item_id')
 
+    # commit 時も最新 status を再チェックし、許可IDのみ更新
+    if ids:
+        placeholders = ",".join(["?"] * len(ids))
+        rows_status = db.execute(
+            f"SELECT id, status FROM item WHERE id IN ({placeholders})",
+            ids
+        ).fetchall()
+        allowed_now_ids = [str(r['id']) for r in rows_status if r['status'] in BULK_EDIT_ALLOWED_ITEM_STATUSES]
+        not_allowed_now_ids = [str(r['id']) for r in rows_status if r['status'] not in BULK_EDIT_ALLOWED_ITEM_STATUSES]
+        if not_allowed_now_ids:
+            flash(f"送信中に状態が変更されたため、一部アイテムの編集をスキップしました（ID: {', '.join(not_allowed_now_ids)}）。"
+                  f"許可状態: {', '.join(BULK_EDIT_ALLOWED_ITEM_STATUSES)}")
+    else:
+        allowed_now_ids = []
+
     user_field_keys = [f['key'] for f in FIELDS if not f.get('internal', False) and f.get('show_in_index', True)]
 
-    for item_id in ids:
+    # ▼ 念押し：許可対象のみ更新
+    for item_id in allowed_now_ids:
         values = [request.form.get(f"{key}_{item_id}", "") for key in user_field_keys]
         set_clause = ", ".join([f"{key}=?" for key in user_field_keys])
         db.execute(f"UPDATE item SET {set_clause} WHERE id=?", values + [item_id])
 
     db.commit()
-    # ロックのみ解除（statusは触らない）
-    release_locks(db, [int(x) for x in ids])
-    flash(f"{len(ids)}件の編集を反映しました。")
+    # ロックのみ解除（statusは触らない）—送信された全IDを解除してロック取り残しを防止
+    release_locks(db, [int(x) for x in ids if x.isdigit()])
+    flash(f"{len(allowed_now_ids)}件の編集を反映しました。")
     return redirect(url_for('index_bp.index'))
 
 @bulk_edit_bp.route('/bulk_edit/cancel', methods=['POST'])
@@ -84,7 +119,7 @@ def bulk_edit_cancel():
     ids = request.form.getlist('item_id')
 
     # 値は保存せず、ロックのみ解除（statusは触らない）
-    release_locks(db, [int(x) for x in ids])
+    release_locks(db, [int(x) for x in ids if x.isdigit()])
     flash("編集をキャンセルし、ロックを解除しました。")
     return redirect(url_for('index_bp.index'))
 
