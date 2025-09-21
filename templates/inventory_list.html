@@ -21,9 +21,10 @@
   .summary { font-size: 14px; color: #555; margin-bottom: 8px; }
 
   .filter-row td, .filter-row th { background: #f5f5cc !important; font-style: italic; }
+  .filter-row td { white-space: nowrap; } /* 折り返さず1行で */
   .filter-cell-input { cursor:text; min-height:22px; outline:none; padding:1px 3px; background:#fffde7; }
   .filter-dropdown {
-    display:none; position:absolute; left:0; top:25px; z-index:9999; /* ←前面に */
+    display:none; position:absolute; left:0; top:25px; z-index:9999;
     min-width:140px; max-height:220px; overflow-y:auto; background:#fff; border:1px solid #bbb; border-radius:4px; box-shadow:0 2px 12px rgba(0,0,0,.15);
   }
   .filter-clear {
@@ -32,19 +33,40 @@
     font-weight: bold; font-size: 12px; line-height: 16px; text-align: center; cursor: pointer; user-select: none; display: none;
   }
   .filter-clear:hover { background: #999; }
-  #inventory-form table tr {
-    cursor: pointer;
-    transition: background-color .12s ease;
+
+  /* 行ホバー */
+  #inventory-form table tr { cursor: pointer; transition: background-color .12s ease; }
+  #inventory-form table tr:hover td { background: #eef6ff; }
+
+  /* ▼ 年月フィルタ：小アイコン＋ポップオーバー */
+  .month-filter-wrap { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+  .month-badge {
+    display: inline-block; padding: 1px 6px; border-radius: 10px; border: 1px solid #bbb; background: #fff;
+    font-size: 12px; color: #333; max-width: 110px; overflow: hidden; text-overflow: ellipsis;
   }
-  #inventory-form table tr:hover td {
-    background: #eef6ff;   /* 好きな色に調整可 */
-}
+  .month-badge.empty { color: #888; border-style: dashed; }
+  .month-icon-btn {
+    width: 24px; height: 24px; border: 1px solid #bbb; background: #fff; border-radius: 6px;
+    display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .month-icon-btn:hover { background: #f3f6ff; }
+  .month-popover {
+    position: absolute; top: 28px; left: 0; z-index: 10000; display: none;
+    padding: 8px; background: #fff; border: 1px solid #bbb; border-radius: 6px; box-shadow: 0 2px 12px rgba(0,0,0,.15);
+    white-space: normal; min-width: 200px;
+  }
+  .month-popover .row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+  .month-popover input[type="month"] { font-size: 14px; padding: 2px 4px; }
+  .month-popover .btn {
+    padding: 4px 8px; border: 1px solid #bbb; background: #f6f6f6; border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  .month-popover .btn.apply { background: #4285f4; color: #fff; border-color: #2d63b7; }
+  .month-popover .btn.clear { background: #fff; }
 </style>
 
 <script>
-// ====== フィルタセル（index と同仕様）：セルクリックで編集開始、候補ドロップダウン、Enter送信、×でクリア ======
 document.addEventListener('DOMContentLoaded', function () {
-  // 1) 全選択（左上）→ データ表のチェックを一括制御
+  // 1) 全選択（左上）
   const selectAll = document.getElementById('select-all');
   if (selectAll) {
     selectAll.addEventListener('change', function () {
@@ -53,7 +75,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // 2) フィルタの編集 UI
+  // 2) フィルタの編集 UI（index と同様）
   var filterChoices = {{ filter_choices_dict | tojson }};
   document.querySelectorAll('.filter-row td[data-filter-editable="true"]').forEach(function(td){
     const col = td.dataset.col;
@@ -61,7 +83,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const hidden = td.querySelector('input[type="hidden"]');
     const dropdown = td.querySelector('.filter-dropdown');
 
-    // 安定のため position:relative を確保
     if (getComputedStyle(td).position === 'static') td.style.position = 'relative';
 
     let choices = (filterChoices[col] || []).slice();
@@ -117,10 +138,8 @@ document.addEventListener('DOMContentLoaded', function () {
       setTimeout(function(){ document.getElementById('filter-form').submit(); }, 10);
     }
     function startEdit(){
-      // クリック時に必ず編集化＆候補オープン
       div.contentEditable = true;
       div.focus();
-      // キャレットを末尾へ
       const sel = window.getSelection(); const r = document.createRange();
       r.selectNodeContents(div); r.collapse(false); sel.removeAllRanges(); sel.addRange(r);
       state.value = div.textContent.trim();
@@ -135,9 +154,7 @@ document.addEventListener('DOMContentLoaded', function () {
       showOrHideClear();
     }
 
-    // td または div クリックで開始（index と同様）
     td.addEventListener('click', function(e){
-      // × クリックは除外
       if (e.target.classList.contains('filter-clear')) return;
       if (!state.open) startEdit();
     });
@@ -145,7 +162,6 @@ document.addEventListener('DOMContentLoaded', function () {
       state.value = div.textContent.trim();
       state.selected=-1;
       updateDropdown(); showOrHideClear();
-      // 入力変化で軽くディレイして送信（Enter不要）
       clearTimeout(div.__t);
       div.__t = setTimeout(function(){ document.getElementById('filter-form').submit(); }, 400);
     });
@@ -162,45 +178,57 @@ document.addEventListener('DOMContentLoaded', function () {
       else if (e.key === 'Escape'){ e.preventDefault(); finishEdit(); }
     });
     div.addEventListener('blur', function(){
-      // メニュークリックを拾えるように少し遅らせて確定
       setTimeout(finishEdit, 150);
     });
   });
-});
 
-// ====== 棚卸し一覧：行クリックでチェックボックスをトグル ======
-document.addEventListener('DOMContentLoaded', function () {
-  const table = document.querySelector('#inventory-form table');
-  if (!table) return;
+  // 3) 年月フィルタ：小アイコン→ポップオーバー
+  const ymBtn = document.getElementById('month-icon-btn');
+  const pop = document.getElementById('month-popover');
+  const ymInput = document.getElementById('month-input');
+  const applyBtn = document.getElementById('month-apply');
+  const clearBtn = document.getElementById('month-clear');
+  const hiddenField = document.getElementById('month-hidden');
+  const form = document.getElementById('filter-form');
 
-  table.addEventListener('click', function (e) {
-    const tag = (e.target.tagName || '').toLowerCase();
-    // 入力系をクリックしたときはトグルしない
-    if (['input','button','a','select','textarea','label'].includes(tag)) return;
+  function openPop() {
+    pop.style.display = 'block';
+    // 既存値を input に反映
+    ymInput.value = hiddenField.value || '';
+    setTimeout(() => ymInput.focus(), 0);
+    document.addEventListener('mousedown', outsideClose);
+    document.addEventListener('keydown', escClose);
+  }
+  function closePop() {
+    pop.style.display = 'none';
+    document.removeEventListener('mousedown', outsideClose);
+    document.removeEventListener('keydown', escClose);
+  }
+  function outsideClose(e) {
+    if (!pop.contains(e.target) && e.target !== ymBtn) closePop();
+  }
+  function escClose(e) {
+    if (e.key === 'Escape') closePop();
+  }
 
-    const tr = e.target.closest('tr');
-    if (!tr) return;
-
-    const cb = tr.querySelector('input[type="checkbox"][name="selected_ids"]');
-    if (!cb || cb.disabled) return;
-
-    cb.checked = !cb.checked;
-    cb.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-});
-
-// ====== 棚卸し一覧：左上「全選択」で一括ON/OFF ======
-document.addEventListener('DOMContentLoaded', function () {
-  const selectAll = document.getElementById('select-all');
-  if (!selectAll) return;
-
-  selectAll.addEventListener('change', function () {
-    document.querySelectorAll('#inventory-form input[name="selected_ids"]:not(:disabled)')
-      .forEach(cb => {
-        cb.checked = selectAll.checked;
-        cb.dispatchEvent(new Event('change', { bubbles: true }));
-      });
-  });
+  if (ymBtn) {
+    ymBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      if (pop.style.display === 'block') closePop(); else openPop();
+    });
+  }
+  if (applyBtn) {
+    applyBtn.addEventListener('click', function() {
+      hiddenField.value = ymInput.value.trim();
+      form.submit();
+    });
+  }
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function() {
+      hiddenField.value = '';
+      form.submit();
+    });
+  }
 });
 </script>
 {% endblock %}
@@ -216,9 +244,11 @@ document.addEventListener('DOMContentLoaded', function () {
   {% endif %}
 {% endwith %}
 
-<!-- ===== 1行目：フィルタ＋タイトル（←ここに全選択チェックも固定） ===== -->
+<!-- ===== 1行目：フィルタ＋タイトル ===== -->
 <form id="filter-form" method="get" action="{{ url_for('inventory_bp.inventory_list') }}">
   <input type="hidden" name="per_page" value="{{ per_page }}">
+  <!-- 年月（最終棚卸）保持用の hidden -->
+  <input type="hidden" id="month-hidden" name="last_checked_ym_filter" value="{{ filters.get('last_checked_ym', '') }}">
   <table>
     <tr>
       <th class="col-checkbox">
@@ -250,15 +280,40 @@ document.addEventListener('DOMContentLoaded', function () {
         <div class="filter-clear">×</div>
       </td>
       {% endfor %}
-      <!-- 末尾 3 列（ボタンは不要とのことなので空セル） -->
-      <td></td>
+      <!-- 最終棚卸し日：小アイコン＋バッジ（未実施も“以前”扱いはサーバ側で実装済み） -->
+      <td style="position:relative;">
+        <div class="month-filter-wrap">
+          <button id="month-icon-btn" class="month-icon-btn" title="最終棚卸し年月で絞り込み">
+            <!-- シンプルなカレンダーSVG（装飾不要・依存なし） -->
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10zM5 12h4v4H5v-4zm6 0h4v4h-4v-4zm6 0h2v4h-2v-4zM5 18h4v2H5v-2zm6 0h4v2h-4v-2zm6 0h2v2h-2v-2z" fill="#333"/>
+            </svg>
+          </button>
+          <span class="month-badge {% if not filters.get('last_checked_ym') %}empty{% endif %}">
+            {{ filters.get('last_checked_ym') or 'YYYY-MM' }} 以前
+          </span>
+          <div id="month-popover" class="month-popover">
+            <div class="row">
+              <label for="month-input" style="font-size:13px;">年月（以前で絞る）</label>
+              <input type="month" id="month-input" value="{{ filters.get('last_checked_ym', '') }}">
+            </div>
+            <div class="row" style="justify-content:flex-end; gap:6px;">
+              <button type="button" class="btn clear" id="month-clear">クリア</button>
+              <button type="button" class="btn apply" id="month-apply">適用</button>
+            </div>
+            <div style="font-size:12px;color:#666;margin-top:6px;">
+              未実施（最終棚卸しなし）も「以前」として含まれます
+            </div>
+          </div>
+        </div>
+      </td>
       <td></td>
       <td></td>
     </tr>
   </table>
 </form>
 
-<!-- ===== データ表（タイトル行は出さない） ===== -->
+<!-- ===== データ表 ===== -->
 <form id="inventory-form" method="post" action="{{ url_for('inventory_bp.inventory_check') }}">
   <table>
     {% for item in items %}

@@ -1,5 +1,6 @@
 # blueprints/inventory_bp.py
 from datetime import datetime
+import calendar
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 
 from services import (
@@ -70,10 +71,28 @@ def inventory_list():
         where.append("i.sample_manager = ?")
         params.append(username)
 
+    # --- 最終棚卸し日（年月）フィルタ：未実施も“以前”として含める ---
+    last_checked_ym = request.args.get("last_checked_ym_filter", "").strip()
+    filters["last_checked_ym"] = last_checked_ym
+
+    ic_date_clause = ""
+    month_end_str = None
+    if last_checked_ym:
+        # 期待フォーマット: YYYY-MM
+        try:
+            dt = datetime.strptime(last_checked_ym, "%Y-%m")
+            last_day = calendar.monthrange(dt.year, dt.month)[1]
+            month_end_str = f"{dt.year:04d}-{dt.month:02d}-{last_day:02d} 23:59:59"
+            # ★ 未実施（NULL）も含める： (ic.checked_at IS NULL OR ic.checked_at <= ?)
+            ic_date_clause = " AND (ic.checked_at IS NULL OR ic.checked_at <= ?)"
+        except ValueError:
+            # フォーマット不正なら無視（フィルタ未適用）
+            pass
+
     where_clause = "WHERE " + " AND ".join(where) if where else ""
 
     # ===== データ取得（最新棚卸し情報をJOIN）=====
-    rows_all = db.execute(f"""
+    base_sql = f"""
         SELECT i.*,
                ic.checked_at AS last_checked_at,
                ic.checker    AS last_checker
@@ -88,8 +107,20 @@ def inventory_list():
             ON a.item_id = b.item_id AND a.checked_at = b.max_checked
         ) ic ON i.id = ic.item_id
         {where_clause}
-        ORDER BY i.id DESC
-    """, params).fetchall()
+    """
+    # JOIN 後の ic 条件を足す（NULL も対象にするため LEFT JOIN を維持）
+    if ic_date_clause:
+        if where_clause:
+            base_sql += ic_date_clause
+        else:
+            base_sql += " WHERE 1=1" + ic_date_clause
+    base_sql += " ORDER BY i.id DESC"
+
+    final_params = list(params)
+    if ic_date_clause and month_end_str:
+        final_params.append(month_end_str)
+
+    rows_all = db.execute(base_sql, final_params).fetchall()
 
     total = len(rows_all)
     if per_page is not None:
