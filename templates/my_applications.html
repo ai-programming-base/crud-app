@@ -6,19 +6,37 @@
 {% block head %}
 <style>
     table { border-collapse: collapse; width: 98%; }
-    th, td { border: 1px solid #aaa; padding: 6px 12px; }
+    th, td { border: 1px solid #aaa; padding: 6px 12px; vertical-align: top; }
     th { background: #eee; }
-    .btn { margin: 0 4px 10px 0; padding: 7px 16px; border-radius: 4px; border: none; background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
+    .btn { margin: 0 4px 10px 0; padding: 7px 16px; border-radius: 4px; border: none;
+           background: #4285f4; color: #fff; text-decoration: none; cursor: pointer; }
     .btn.selected { background: #33691e; }
     .status-f { color: #db4437; }
     .status-s { color: #3161c4; }
     .status-a { color: #43a047; }
+    /* ▼取消ボタン用 */
+    .btn-cancel {
+        padding: 3px 8px; border: none; border-radius: 4px;
+        background: #999; color: #fff; cursor: pointer; font-size: 85%;
+        margin-left: 8px;
+    }
+    .btn-cancel:hover { opacity: 0.85; }
 </style>
+<script>
+function confirmCancel(formId) {
+  const form = document.getElementById(formId);
+  const hidden = form.querySelector('input[name="cancel_comment"]');
+  const reason = prompt("取り消し理由を入力してください");
+  if (!reason) return false;
+  hidden.value = reason.trim();
+  if (!hidden.value) return false;
+  return confirm("この申請を取り消します。よろしいですか？");
+}
+</script>
 {% endblock %}
 
 {% block content %}
 <h1>申請アイテム一覧</h1>
-<div style="margin-bottom:20px;">
 <div style="margin-bottom:20px;">
     <a href="{{ url_for('my_applications_bp.my_applications', status='all') }}"
        class="btn{% if status=='all' %} selected{% endif %}">全て</a>
@@ -28,11 +46,13 @@
        class="btn{% if status=='approved' %} selected{% endif %}">承認済み</a>
     <a href="{{ url_for('my_applications_bp.my_applications', status='remanded') }}"
        class="btn{% if status=='remanded' %} selected{% endif %}">差し戻し</a>
+    <a href="{{ url_for('my_applications_bp.my_applications', status='canceled') }}"
+       class="btn{% if status=='canceled' %} selected{% endif %}">取消</a>
 
     <a href="{{ url_for('index_bp.index') }}"
        class="btn" style="background:#eee; color:#23468e; border:1px solid #4285f4;">戻る</a>
 </div>
-</div>
+
 <table>
     <tr>
         <th>申請ID</th>
@@ -41,7 +61,7 @@
         <th>申請内容</th>
         <th>ステータス</th>
         <th>承認者</th>
-        <th>承認日時</th>
+        <th>承認／差し戻し／取消日時</th>
         <th>コメント</th>
     </tr>
     {% for app in applications %}
@@ -53,14 +73,32 @@
             {% set vals = app['new_values'] | safe | loadjson %}
             {% if vals.status == '入庫持ち出し申請中' %}
               入庫持ち出し申請
+            {% elif vals.status == '入庫持ち出し譲渡申請中' %}
+              入庫持ち出し譲渡申請
             {% elif vals.status == '入庫申請中' %}
               入庫申請
+            {% elif vals.status == '持ち出し申請中' %}
+              持ち出し申請
+            {% elif vals.status == '持ち出し譲渡申請中' %}
+              持ち出し譲渡申請
             {% elif vals.status == '返却申請中' %}
               持ち出し終了申請
             {% elif vals.status == '破棄・譲渡申請中' %}
-                破棄・譲渡申請
+              破棄・譲渡申請
             {% else %}
               {{ vals.status or '' }}
+            {% endif %}
+
+            {% if app['status'] not in ['承認', '差し戻し', '取消'] %}
+              <form id="cancel-form-{{ app['id'] }}" method="post"
+                    action="{{ url_for('my_applications_bp.cancel_application', app_id=app['id']) }}"
+                    style="display:inline;">
+                <input type="hidden" name="cancel_comment" value="">
+                <button type="submit" class="btn-cancel"
+                        onclick="return confirmCancel('cancel-form-{{ app['id'] }}');">
+                  取消
+                </button>
+              </form>
             {% endif %}
         </td>
         <td>
@@ -68,14 +106,16 @@
                 <span class="status-a">承認済</span>
             {% elif app['status'] == '差し戻し' %}
                 <span class="status-f">差し戻し</span>
+            {% elif app['status'] == '取消' %}
+                <span class="status-f">取消</span>
             {% else %}
                 <span class="status-s">申請中</span>
             {% endif %}
         </td>
         {% set appr = app['approver'] %}
         <td>{{ user_display.get(appr, appr) if appr else '-' }}</td>
-        <td>{{ app['approval_datetime'] }}</td>
-        <td>{{ app['approver_comment'] }}</td>
+        <td>{{ app['approval_datetime'] or '' }}</td>
+        <td>{{ app['approver_comment'] or '' }}</td>
     </tr>
     {% endfor %}
 </table>

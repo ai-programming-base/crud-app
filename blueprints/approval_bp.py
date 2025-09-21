@@ -83,7 +83,13 @@ def build_application_mail(db, app_row, action: str, approver_comment: str = "")
             to_emails.add(p["email"])
     to = ",".join(sorted(to_emails))
 
-    action_label = "承認" if action == "approve" else "差し戻し"
+    action_label = (
+        "承認" if action == "approve"
+        else "差し戻し" if action == "reject"
+        else "取消" if action == "cancel"
+        else "更新"
+    )
+
     kind = (
         "入庫持ち出し譲渡申請" if status == "入庫持ち出し譲渡申請中" else
         "入庫持ち出し申請"     if status == "入庫持ち出し申請中" else
