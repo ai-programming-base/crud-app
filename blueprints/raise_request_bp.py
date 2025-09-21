@@ -98,3 +98,45 @@ def delete_selected():
         db.commit()
 
     return redirect(url_for('index_bp.index'))
+
+
+@raise_request_bp.route('/delete_pre_entry', methods=['POST'])
+@login_required
+@roles_required('admin', 'manager', 'proper', 'partner')
+def delete_pre_entry():
+    ids = request.form.getlist('selected_ids')
+    if not ids:
+        flash("通し番号を1件以上選択してください。")
+        return redirect(url_for('index_bp.index'))
+
+    db = get_db()
+    # 現ユーザーが管理者で、かつ入庫前のみ削除可
+    my_username = g.user['username']
+    deleted = 0
+    skipped = 0
+
+    # ひとつずつ条件確認して安全に削除
+    for item_id in ids:
+        row = db.execute(
+            "SELECT id, status, sample_manager FROM item WHERE id=?",
+            (item_id,)
+        ).fetchone()
+        if not row:
+            skipped += 1
+            continue
+
+        if row["status"] == "入庫前" and row["sample_manager"] == my_username:
+            # 依存行（child_item 等）が存在しない前提。存在する場合はFKの設定に注意。
+            db.execute("DELETE FROM item WHERE id=?", (item_id,))
+            deleted += 1
+        else:
+            skipped += 1
+
+    db.commit()
+
+    if deleted:
+        flash(f"入庫前アイテムを {deleted} 件削除しました。")
+    if skipped:
+        flash(f"{skipped} 件は削除対象外（『入庫前』でない、またはあなたが管理者ではない）でした。")
+
+    return redirect(url_for('index_bp.index'))

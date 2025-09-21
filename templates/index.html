@@ -341,6 +341,29 @@ function showPrintLabels() { let checked = document.querySelectorAll('input[name
 function bulkEdit() { const checked = document.querySelectorAll('input[name="selected_ids"]:checked'); if (checked.length < 1) { alert("通し番号を1件以上選択してください"); return; } const ids = Array.from(checked).map(cb => cb.value).join(','); window.location.href = "/bulk_edit?ids=" + encodeURIComponent(ids); }
 function unlockMyLocks() { if (!confirm('自分がロックしているアイテムの編集をすべて解除します。よろしいですか？')) return; document.getElementById('unlock-form').submit(); }
 
+function submitDelete() {
+  // 既存削除にも確認ダイアログを追加
+  if (!confirm('選択アイテムを削除します。この操作は取り消せません。よろしいですか？')) return;
+  var form = document.getElementById('main-form');
+  form.action = "{{ url_for('raise_request_bp.delete_selected') }}";
+  form.method = "POST";
+  form.submit();
+}
+
+function submitDeletePreEntry() {
+  // 入庫前 + 自分が管理者 のものだけサーバ側で削除される
+  const msg = [
+    '入庫前アイテムを削除します。',
+    '※「入庫前」かつ「あなたが管理者」のアイテムのみ削除対象です。',
+    'この操作は取り消せません。実行しますか？'
+  ].join('\n');
+  if (!confirm(msg)) return;
+  var form = document.getElementById('main-form');
+  form.action = "{{ url_for('raise_request_bp.delete_pre_entry') }}";
+  form.method = "POST";
+  form.submit();
+}
+
 // ====== 行クリックでチェックボックスをトグル ======
 document.addEventListener('DOMContentLoaded', function () {
   const dataTable = document.querySelector('#main-form table');
@@ -433,6 +456,7 @@ document.addEventListener('DOMContentLoaded', function () {
           href="{{ url_for('index_bp.export_excel', per_page=per_page, **filters) }}"
           class="button-link"
         >Excel出力</a>
+        <button type="button" class="danger" onclick="submitDeletePreEntry()">入庫前アイテムを削除</button>
         {% endif %}
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
         <button type="button" class="danger" onclick="submitDelete()">選択アイテムを削除</button>
