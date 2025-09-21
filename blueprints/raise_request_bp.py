@@ -37,6 +37,9 @@ def raise_request():
             if f.get('internal', False):
                 if f['key'] == 'status':
                     internal_values.append("入庫前")
+                elif f['key'] == 'sample_manager':
+                    # 起票者の user_id（＝username）を保存
+                    internal_values.append(g.user['username'])
                 else:
                     internal_values.append("")
 
