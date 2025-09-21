@@ -18,7 +18,7 @@ CHECKOUT_ALLOWED_ITEM_STATUSES = ('入庫', '持ち出し中', '返却済')
 
 @checkout_bp.route('/checkout_request', methods=['POST', 'GET'])
 @login_required
-@roles_required('admin', 'manager', 'proper')
+@roles_required('admin', 'manager', 'proper', 'partner')
 def checkout_request():
     db = get_db()
 

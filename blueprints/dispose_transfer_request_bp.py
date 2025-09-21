@@ -23,7 +23,7 @@ DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES = ('入庫', '持ち出し中', '返却�
 
 @dispose_transfer_request_bp.route('/dispose_transfer_request', methods=['GET', 'POST'])
 @login_required
-@roles_required('admin', 'manager', 'proper')
+@roles_required('admin', 'manager', 'proper', 'partner')
 def dispose_transfer_request():
     db = get_db()
 

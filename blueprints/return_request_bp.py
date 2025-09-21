@@ -20,7 +20,7 @@ RETURN_ALLOWED_ITEM_STATUSES = ('持ち出し中',)
 
 @return_request_bp.route('/return_request', methods=['POST', 'GET'])
 @login_required
-@roles_required('admin', 'manager', 'proper')
+@roles_required('admin', 'manager', 'proper', 'partner')
 def return_request():
     db = get_db()
 

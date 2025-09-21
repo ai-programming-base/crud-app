@@ -393,12 +393,14 @@ document.addEventListener('DOMContentLoaded', function () {
     </div>
     {% endif %}
 
-    {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
+    {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles or 'partner' in g.user_roles %}
     <div class="dropdown">
       <button class="dropbtn">申請</button>
       <div class="dropdown-menu">
         <div class="group-title">申請</div>
+        {% if 'admin' in g.user_roles or 'manager' in g.user_roles or 'proper' in g.user_roles %}
         <button type="button" onclick="submitApplyRequest()">入庫申請</button>
+        {% endif %}
         <button type="button" onclick="submitCheckoutRequest()">持ち出し申請</button>
         <button type="button" onclick="submitReturnRequest()">持ち出し終了申請</button>
         <button type="button" onclick="submitDisposeTransferRequest()">破棄・譲渡申請</button>
