@@ -1,5 +1,6 @@
 # blueprints/return_request_bp.py
 import json
+import re
 from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 
@@ -17,6 +18,11 @@ return_request_bp = Blueprint("return_request_bp", __name__)
 
 # ▼ 返却申請を受け付ける item.status を一箇所で定義（後で変更したい場合はここだけ触ればOK）
 RETURN_ALLOWED_ITEM_STATUSES = ('持ち出し中',)
+
+STORAGE_PATTERN = re.compile(r"^S-\d{4}\s*上から([1-9]\d*)段目$")
+
+def _is_valid_storage(text: str) -> bool:
+    return bool(text and STORAGE_PATTERN.match(text))
 
 @return_request_bp.route('/return_request', methods=['POST', 'GET'])
 @login_required
@@ -91,6 +97,11 @@ def return_request():
             approver_default=approver_default,
             approver_list=sorted_managers,
             user_display=user_display,
+            # ▼ 初期表示用（テンプレで value に使う）
+            storage='',
+            return_date='',
+            comment='',
+            approver_selected=approver_default,
         )
 
     # 申請フォームからの送信時（GET, action=submit）
@@ -153,13 +164,71 @@ def return_request():
                 approver_default=approver_default,
                 approver_list=sorted_managers,
                 user_display=user_display,
+                storage=request.args.get('storage',''),
+                return_date=request.args.get('return_date',''),
+                comment=request.args.get('comment',''),
+                approver_selected=request.args.get('approver', approver_default),
             )
-
         applicant = g.user['username']
         applicant_comment = request.args.get('comment', '')
         approver = request.args.get('approver', '')
         return_date = request.args.get('return_date', datetime.now().strftime("%Y-%m-%d"))
         storage = request.args.get('storage', '')
+
+        # ▼▼ 保管場所の形式チェック（サーバ側） ▼▼
+        if not _is_valid_storage(storage):
+            flash("保管場所は『S-1234 上から3段目』の形式で入力してください（S-の後は4桁数字、段は1以上の整数）。")
+
+            # 直前の許可判定を流用して再描画（持ち出し中のみ）
+            rows_status = db.execute(
+                f"SELECT id, status FROM item WHERE id IN ({','.join(['?']*len(item_ids))})",
+                item_ids
+            ).fetchall()
+            allowed_ids = [str(r['id']) for r in rows_status if r['status'] in RETURN_ALLOWED_ITEM_STATUSES]
+            if not allowed_ids:
+                return redirect(url_for('index_bp.index'))
+
+            items = db.execute(
+                f"SELECT * FROM item WHERE id IN ({','.join(['?']*len(allowed_ids))})",
+                allowed_ids
+            ).fetchall()
+            item_list = []
+            for item in items:
+                item = dict(item)
+                item_id = item['id']
+                child_total = db.execute(
+                    "SELECT COUNT(*) FROM child_item WHERE item_id=?", (item_id,)
+                ).fetchone()[0]
+                if child_total == 0:
+                    item['sample_count'] = item.get('num_of_samples', 0)
+                else:
+                    cnt = db.execute(
+                        "SELECT COUNT(*) FROM child_item WHERE item_id=? AND status NOT IN (?, ?)",
+                        (item_id, "破棄", "譲渡")
+                    ).fetchone()[0]
+                    item['sample_count'] = cnt
+                item_list.append(item)
+
+            department = g.user['department']
+            all_managers = get_managers_by_department(None, db)
+            sorted_managers = (
+                [m for m in all_managers if m['department'] == department] +
+                [m for m in all_managers if m['department'] != department]
+            )
+            approver_default = sorted_managers[0]['username'] if sorted_managers else ''
+
+            # 入力値を保持して再表示
+            return render_template(
+                'return_form.html',
+                items=item_list, fields=INDEX_FIELDS,
+                approver_default=approver_default,
+                approver_list=sorted_managers,
+                user_display=user_display,
+                storage=storage,
+                return_date=return_date,
+                comment=applicant_comment,
+                approver_selected=approver or approver_default,
+            )
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for id in item_ids:

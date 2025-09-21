@@ -32,6 +32,13 @@
             alert("全ての数量チェックにチェックしてください");
             return false;
         }
+        // 保管場所の形式チェック：S-1234 上から3段目
+        var storage = document.getElementById('storage').value.trim();
+        var re = /^S-\d{4}\s*上から([1-9]\d*)段目$/;
+        if (!re.test(storage)) {
+            alert("保管場所は『S-1234 上から3段目』の形式で入力してください（S-の後は4桁数字、段は1以上の整数）。");
+            return false;
+        }
         return true;
     }
 </script>
@@ -74,23 +81,34 @@
     </table>
     <div class="form-field">
         <label class="form-label" for="return_date">返却確認日</label>
-        <input class="form-input" type="date" id="return_date" name="return_date">
+        <!-- サーバから渡された値を優先。なければJSで当日をセット -->
+        <input class="form-input" type="date" id="return_date" name="return_date"
+               value="{{ return_date or '' }}">
     </div>
+
     <div class="form-field">
         <label class="form-label" for="storage">保管場所</label>
-        <input class="form-input" type="text" id="storage" name="storage">
+        <input class="form-input" type="text" id="storage" name="storage" required
+               pattern="^S-\d{4}\s*上から[1-9]\d*段目$"
+               title="例: S-0123 上から3段目"
+               value="{{ storage or '' }}">
+        <div style="font-size:.9em;color:#666;margin-top:4px;">
+            形式: <code>S-1234 上から3段目</code>（S-の後は4桁数字、段は1以上の整数）
+        </div>
     </div>
+
     <div class="form-field">
         <label class="form-label" for="comment">申請コメント</label>
-        <textarea class="form-textarea" id="comment" name="comment"></textarea>
+        <textarea class="form-textarea" id="comment" name="comment">{{ comment or '' }}</textarea>
     </div>
-    <!-- 承認者：ドロップダウン -->
+
+    <!-- 承認者：ドロップダウン（選択保持対応） -->
     <div class="form-field">
         <label class="form-label" for="approver">承認者</label>
         <select class="form-select" id="approver" name="approver" required>
             {% for m in approver_list %}
                 <option value="{{ m.username }}"
-                    {% if m.username == approver_default %}selected{% endif %}>
+                    {% if (approver_selected or approver_default) == m.username %}selected{% endif %}>
                     {{ m.department }} {{ m.realname }}
                 </option>
             {% endfor %}
