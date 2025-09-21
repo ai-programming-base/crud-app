@@ -37,6 +37,21 @@ def init_app(app):
         upgrade()
         click.echo(f"Upgraded to schema version: {get_version()}")
 
+    @app.cli.command("fk-check")
+    def fk_check_cmd():
+        """PRAGMA foreign_key_check の結果を表示（空ならOK）"""
+        with get_db() as db:
+            rows = db.execute("PRAGMA foreign_key_check").fetchall()
+            if not rows:
+                click.echo("OK: no foreign key violations.")
+            else:
+                for r in rows:
+                    # r = (table, rowid, parent, fkid) 形式
+                    table = r["table"] if isinstance(r, dict) else r[0]
+                    rowid = r["rowid"] if isinstance(r, dict) else r[1]
+                    parent = r["parent"] if isinstance(r, dict) else r[2]
+                    click.echo(f"NG: table={table} rowid={rowid} parent={parent}")
+
     @app.cli.command("reset-db")
     @click.confirmation_option(prompt="This will DROP ALL TABLES. Continue?")
     def reset_db_cmd():
@@ -59,3 +74,17 @@ def init_app(app):
         init_schema()
         seed_minimal()
         click.echo("Database reset and re-initialized.")
+        click.echo(f"Schema version: {get_version()}")
+
+    @app.cli.command("drop-old")
+    def drop_old_cmd():
+        """マイグレーション残骸の *_old テーブルを一括削除"""
+        with get_db() as db:
+            rows = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_old'"
+            ).fetchall()
+            names = [r[0] if isinstance(r, tuple) else r["name"] for r in rows]
+            for n in names:
+                db.execute(f"DROP TABLE IF EXISTS {n}")
+            db.commit()
+        click.echo("Dropped: " + (", ".join(names) if names else "(none)"))
