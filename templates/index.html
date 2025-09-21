@@ -429,6 +429,10 @@ document.addEventListener('DOMContentLoaded', function () {
         <button type="button" onclick="bulkEdit()">製品情報を一括編集</button>
         <button type="button" onclick="unlockMyLocks()">編集ロックを解除</button>
         <button type="button" onclick="showChildItems()">アイテム詳細表示</button>
+        <a
+          href="{{ url_for('index_bp.export_excel', per_page=per_page, **filters) }}"
+          class="button-link"
+        >Excel出力</a>
         {% endif %}
         {% if 'admin' in g.user_roles or 'manager' in g.user_roles %}
         <button type="button" class="danger" onclick="submitDelete()">選択アイテムを削除</button>
