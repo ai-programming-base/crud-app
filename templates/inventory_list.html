@@ -32,6 +32,13 @@
     font-weight: bold; font-size: 12px; line-height: 16px; text-align: center; cursor: pointer; user-select: none; display: none;
   }
   .filter-clear:hover { background: #999; }
+  #inventory-form table tr {
+    cursor: pointer;
+    transition: background-color .12s ease;
+  }
+  #inventory-form table tr:hover td {
+    background: #eef6ff;   /* 好きな色に調整可 */
+}
 </style>
 
 <script>
@@ -160,6 +167,41 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 });
+
+// ====== 棚卸し一覧：行クリックでチェックボックスをトグル ======
+document.addEventListener('DOMContentLoaded', function () {
+  const table = document.querySelector('#inventory-form table');
+  if (!table) return;
+
+  table.addEventListener('click', function (e) {
+    const tag = (e.target.tagName || '').toLowerCase();
+    // 入力系をクリックしたときはトグルしない
+    if (['input','button','a','select','textarea','label'].includes(tag)) return;
+
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+
+    const cb = tr.querySelector('input[type="checkbox"][name="selected_ids"]');
+    if (!cb || cb.disabled) return;
+
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});
+
+// ====== 棚卸し一覧：左上「全選択」で一括ON/OFF ======
+document.addEventListener('DOMContentLoaded', function () {
+  const selectAll = document.getElementById('select-all');
+  if (!selectAll) return;
+
+  selectAll.addEventListener('change', function () {
+    document.querySelectorAll('#inventory-form input[name="selected_ids"]:not(:disabled)')
+      .forEach(cb => {
+        cb.checked = selectAll.checked;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+  });
+});
 </script>
 {% endblock %}
 
@@ -217,7 +259,7 @@ document.addEventListener('DOMContentLoaded', function () {
 </form>
 
 <!-- ===== データ表（タイトル行は出さない） ===== -->
-<form method="post" action="{{ url_for('inventory_bp.inventory_check') }}">
+<form id="inventory-form" method="post" action="{{ url_for('inventory_bp.inventory_check') }}">
   <table>
     {% for item in items %}
     <tr>
