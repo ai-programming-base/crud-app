@@ -19,7 +19,7 @@ return_request_bp = Blueprint("return_request_bp", __name__)
 # ▼ 返却申請を受け付ける item.status を一箇所で定義（後で変更したい場合はここだけ触ればOK）
 RETURN_ALLOWED_ITEM_STATUSES = ('持ち出し中',)
 
-STORAGE_PATTERN = re.compile(r"^S-\d{4}\s*上から([1-9]\d*)段目$")
+STORAGE_PATTERN = re.compile(r"^S-\d{3}\s*上から([1-9]\d*)段目$")
 
 def _is_valid_storage(text: str) -> bool:
     return bool(text and STORAGE_PATTERN.match(text))
@@ -177,7 +177,7 @@ def return_request():
 
         # ▼▼ 保管場所の形式チェック（サーバ側） ▼▼
         if not _is_valid_storage(storage):
-            flash("保管場所は『S-1234 上から3段目』の形式で入力してください（S-の後は4桁数字、段は1以上の整数）。")
+            flash("保管場所は『S-123 上から3段目』の形式で入力してください（S-の後は3桁数字、段は1以上の整数）。")
 
             # 直前の許可判定を流用して再描画（持ち出し中のみ）
             rows_status = db.execute(
