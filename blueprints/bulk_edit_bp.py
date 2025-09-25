@@ -11,7 +11,7 @@ from services import (
 bulk_edit_bp = Blueprint("bulk_edit_bp", __name__)
 
 # 一括編集を許可する item.status を一箇所で定義
-BULK_EDIT_ALLOWED_ITEM_STATUSES = ('入庫前', '入庫', '持ち出し中', '返却済')
+BULK_EDIT_ALLOWED_ITEM_STATUSES = ('入庫前', '保管中', '持ち出し中', '返却済')
 
 @bulk_edit_bp.route('/bulk_edit')
 @login_required

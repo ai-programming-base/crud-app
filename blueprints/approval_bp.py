@@ -324,7 +324,7 @@ def approval():
                     )
 
                 elif status == "入庫申請中":
-                    db.execute("UPDATE item SET status=? WHERE id=?", ("入庫", item_id))
+                    db.execute("UPDATE item SET status=? WHERE id=?", ("保管中", item_id))
 
                 elif status in ("持ち出し申請中", "持ち出し譲渡申請中"):
                     db.execute("UPDATE item SET status=? WHERE id=?", ("持ち出し中", item_id))
@@ -385,7 +385,7 @@ def approval():
                 elif status == "返却申請中":
                     db.execute(
                         "UPDATE item SET status=?, storage=? WHERE id=?",
-                        ("入庫", new_values.get("storage", ""), item_id)
+                        ("保管中", new_values.get("storage", ""), item_id)
                     )
                     db.execute(
                         """

@@ -17,7 +17,7 @@ from send_mail import send_mail
 bulk_manager_change_bp = Blueprint("bulk_manager_change_bp", __name__)
 
 # 括管理者変更を受け付ける item.status を一箇所で定義
-BULK_MANAGER_CHANGE_ALLOWED_ITEM_STATUSES = ('入庫', '持ち出し中', '返却済')
+BULK_MANAGER_CHANGE_ALLOWED_ITEM_STATUSES = ('保管中', '持ち出し中', '返却済')
 
 @bulk_manager_change_bp.route('/bulk_manager_change', methods=['GET', 'POST'])
 @login_required

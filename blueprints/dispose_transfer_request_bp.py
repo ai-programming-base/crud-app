@@ -19,7 +19,7 @@ from send_mail import send_mail
 dispose_transfer_request_bp = Blueprint("dispose_transfer_request_bp", __name__)
 
 # 破棄・譲渡申請を受け付ける item.status を一箇所で定義
-DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES = ('入庫', '持ち出し中', '返却済')
+DISPOSE_TRANSFER_ALLOWED_ITEM_STATUSES = ('保管中', '持ち出し中', '返却済')
 
 @dispose_transfer_request_bp.route('/dispose_transfer_request', methods=['GET', 'POST'])
 @login_required

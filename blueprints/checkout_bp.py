@@ -14,7 +14,7 @@ from send_mail import send_mail
 checkout_bp = Blueprint("checkout_bp", __name__)
 
 # 申請対象として許可する item.status を一箇所で定義
-CHECKOUT_ALLOWED_ITEM_STATUSES = ('入庫', '持ち出し中', '返却済')
+CHECKOUT_ALLOWED_ITEM_STATUSES = ('保管中', '持ち出し中', '返却済')
 
 @checkout_bp.route('/checkout_request', methods=['POST', 'GET'])
 @login_required
